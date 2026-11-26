@@ -1,0 +1,2044 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>山坡栅格落位实验室 · PixiJS Viewport</title>
+<style>
+  :root {
+    --bg: #e9eef5;
+    --panel: rgba(255, 255, 255, 0.94);
+    --panel-solid: #ffffff;
+    --fg: #172033;
+    --muted: #64748b;
+    --faint: #94a3b8;
+    --line: #d9e2ee;
+    --accent: #2563eb;
+    --accent-soft: #dbeafe;
+    --good: #15803d;
+    --good-soft: #dcfce7;
+    --warn: #b45309;
+    --warn-soft: #fef3c7;
+    --bad: #b91c1c;
+    --bad-soft: #fee2e2;
+    --sky: #0369a1;
+    --shadow: 0 18px 45px rgba(15, 23, 42, 0.16);
+    --radius: 16px;
+    --topbar: #101827;
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b1220;
+      --panel: rgba(15, 23, 42, 0.94);
+      --panel-solid: #111c2f;
+      --fg: #e5edf9;
+      --muted: #9fb0c7;
+      --faint: #64748b;
+      --line: #263449;
+      --accent: #60a5fa;
+      --accent-soft: #172f57;
+      --good: #4ade80;
+      --good-soft: #0f2e1d;
+      --warn: #fbbf24;
+      --warn-soft: #3a2a08;
+      --bad: #f87171;
+      --bad-soft: #3b1414;
+      --sky: #38bdf8;
+      --shadow: 0 18px 45px rgba(0, 0, 0, 0.42);
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0b1220;
+    --panel: rgba(15, 23, 42, 0.94);
+    --panel-solid: #111c2f;
+    --fg: #e5edf9;
+    --muted: #9fb0c7;
+    --faint: #64748b;
+    --line: #263449;
+    --accent: #60a5fa;
+    --accent-soft: #172f57;
+    --good: #4ade80;
+    --good-soft: #0f2e1d;
+    --warn: #fbbf24;
+    --warn-soft: #3a2a08;
+    --bad: #f87171;
+    --bad-soft: #3b1414;
+    --sky: #38bdf8;
+    --shadow: 0 18px 45px rgba(0, 0, 0, 0.42);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    font-size: 14px;
+  }
+
+  button, input { font: inherit; }
+  button { cursor: pointer; }
+
+  .app {
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 18px;
+    color: #f8fafc;
+    background:
+      radial-gradient(circle at 12% -40%, rgba(56, 189, 248, 0.35), transparent 34%),
+      linear-gradient(120deg, #0f172a, #1e293b 58%, #172554);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    box-shadow: 0 8px 28px rgba(2, 6, 23, 0.25);
+    z-index: 5;
+  }
+
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .logo {
+    width: 42px; height: 42px; flex: 0 0 auto;
+    display: grid; place-items: center;
+    border-radius: 13px;
+    background: linear-gradient(145deg, #38bdf8, #2563eb 65%, #1e3a8a);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 8px 20px rgba(37,99,235,.35);
+    font-size: 23px;
+  }
+  .topbar h1 { margin: 0; font-size: 18px; letter-spacing: .02em; white-space: nowrap; }
+  .topbar p { margin: 2px 0 0; color: #b6c6dc; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .top-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 11px; border-radius: 999px;
+    background: rgba(15, 23, 42, .42);
+    border: 1px solid rgba(148, 163, 184, .28);
+    color: #dbeafe; font-size: 12px; white-space: nowrap;
+  }
+  .pill::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,.16);
+  }
+  .pill.busy::before { background: #f59e0b; box-shadow: 0 0 0 4px rgba(245,158,11,.18); animation: pulseDot .8s infinite alternate; }
+  .pill.locked::before { background: #ef4444; box-shadow: 0 0 0 4px rgba(239,68,68,.18); }
+
+  .top-actions button, .compare-buttons button, .action-row button, .preset-row button {
+    border: 1px solid var(--line);
+    background: var(--panel-solid);
+    color: var(--fg);
+    border-radius: 10px;
+    padding: 8px 11px;
+    font-size: 12px;
+    transition: transform .15s ease, border-color .15s ease, background .15s ease;
+  }
+  .top-actions button {
+    color: #eaf2ff; background: rgba(255,255,255,.09);
+    border-color: rgba(148,163,184,.28);
+  }
+  .top-actions button:hover, .compare-buttons button:hover, .action-row button:hover, .preset-row button:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+  .top-actions button.primary { background: linear-gradient(135deg,#0284c7,#2563eb); border-color: rgba(255,255,255,.2); }
+
+  .layout {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 398px;
+  }
+
+  .stage {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 30%, #d8e4cf, #b9c9ad 72%, #9fb293);
+  }
+  .canvas-host, .canvas-host canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .canvas-host canvas { touch-action: none; }
+
+  .stage.critical::after {
+    content: "";
+    position: absolute; inset: 0; z-index: 4;
+    pointer-events: none;
+    border: 4px solid rgba(245, 158, 11, .95);
+    box-shadow: inset 0 0 70px rgba(245, 158, 11, .28);
+    animation: stageFlash .62s ease-in-out infinite alternate;
+  }
+  .stage.critical .legend { top: 92px; transition: top .2s ease; }
+
+  .hud {
+    position: absolute; z-index: 3;
+    left: 14px; bottom: 14px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    background: rgba(15, 23, 42, .78);
+    color: #e5eefc;
+    font-size: 12px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 28px rgba(2,6,23,.22);
+    pointer-events: none;
+  }
+
+  .critical-banner {
+    position: absolute; z-index: 6;
+    top: 14px; left: 50%; transform: translateX(-50%);
+    width: min(560px, calc(100% - 28px));
+    padding: 11px 15px;
+    border-radius: 13px;
+    background: rgba(120, 53, 15, .94);
+    color: #fffbeb;
+    border: 1px solid #fbbf24;
+    box-shadow: 0 14px 36px rgba(120,53,15,.35);
+    font-weight: 700;
+    text-align: center;
+    animation: bannerFlash .62s ease-in-out infinite alternate;
+  }
+
+  .legend {
+    position: absolute; z-index: 3;
+    right: 14px; top: 14px;
+    width: 196px;
+    padding: 11px 12px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.88);
+    color: #1e293b;
+    border: 1px solid rgba(255,255,255,.65);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(12px);
+    font-size: 12px;
+  }
+  .legend h3 { margin: 0 0 8px; font-size: 12px; color: #334155; letter-spacing: .08em; }
+  .legend-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .swatch { width: 18px; height: 12px; border-radius: 4px; flex: 0 0 auto; border: 1px solid rgba(15,23,42,.12); }
+  .swatch.forbidden { background: rgba(220,38,38,.58); }
+  .swatch.critical { background: rgba(245,158,11,.62); }
+  .line-swatch { width: 22px; height: 0; border-top: 2px solid #70482a; flex: 0 0 auto; }
+  .line-swatch.stream { border-top: 4px solid #38bdf8; }
+  .line-swatch.path { border-top: 2px dashed #b7791f; }
+  .line-swatch.trail { border-top: 2px solid #7dd3fc; opacity: .8; }
+
+  .sidebar {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--bg) 72%, transparent), var(--bg));
+    border-left: 1px solid var(--line);
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .07);
+    backdrop-filter: blur(14px);
+  }
+  .card h2 { margin: 0 0 11px; font-size: 15px; letter-spacing: .01em; }
+  .card-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+  .card-title h2 { margin: 0; }
+  .hint-inline { color: var(--muted); font-size: 11px; }
+  .empty {
+    padding: 16px 12px;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    color: var(--muted);
+    line-height: 1.65;
+    background: color-mix(in srgb, var(--accent-soft) 35%, transparent);
+  }
+
+  .badge {
+    display: inline-flex; align-items: center;
+    padding: 4px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 700;
+    background: var(--accent-soft); color: var(--accent);
+    white-space: nowrap;
+  }
+  .badge.moving { background: var(--warn-soft); color: var(--warn); }
+  .badge.locked { background: var(--bad-soft); color: var(--bad); }
+
+  .detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .detail-head h3 { margin: 0; font-size: 16px; }
+  .detail-coord { margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+
+  .score-row { margin: 10px 0; }
+  .score-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 5px; }
+  .score-head label { font-weight: 700; font-size: 13px; }
+  .score-head output { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .bar { height: 9px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--line) 72%, transparent); }
+  .bar i { display: block; height: 100%; border-radius: inherit; transition: width .22s ease, background .22s ease; }
+  .score-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; color: var(--muted); font-size: 11px; }
+
+  .total-line {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 12px 0 10px; padding: 10px 12px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent-soft), transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  }
+  .total-line strong { font-size: 22px; font-variant-numeric: tabular-nums; color: var(--accent); }
+
+  .reasons { margin: 8px 0 0; padding-left: 0; list-style: none; display: grid; gap: 7px; }
+  .reasons li {
+    position: relative;
+    padding: 8px 9px 8px 29px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg) 72%, var(--panel-solid));
+    border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+    color: var(--fg);
+    line-height: 1.55;
+    font-size: 12px;
+  }
+  .reasons li::before {
+    content: attr(data-icon);
+    position: absolute; left: 9px; top: 8px;
+    width: 15px; text-align: center;
+  }
+  .reasons li.bad { border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); background: var(--bad-soft); }
+  .reasons li.warn { border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); background: var(--warn-soft); }
+  .reasons li.good { border-color: color-mix(in srgb, var(--good) 30%, var(--line)); background: var(--good-soft); }
+
+  .preset-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 13px; }
+  .preset-row button { padding: 7px 4px; font-size: 11px; }
+  .preset-row button.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+  .slider-row { margin: 12px 0; }
+  .slider-label, .threshold-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 700; }
+  output { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 800; }
+  input[type="range"] { width: 100%; margin: 8px 0 3px; accent-color: var(--accent); cursor: pointer; }
+  .slider-foot { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 11px; }
+  .slider-foot b { color: var(--fg); font-weight: 700; }
+
+  .threshold { margin: 13px 0; }
+  .scale { position: relative; display: flex; justify-content: space-between; color: var(--faint); font-size: 10px; margin-top: 3px; }
+  .critical-tick {
+    position: absolute; left: 29.17%; transform: translateX(-50%);
+    top: -1px; color: var(--warn); font-weight: 800; white-space: nowrap;
+  }
+
+  .compare-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 11px; }
+  .compare-buttons button { display: flex; align-items: center; justify-content: center; gap: 7px; }
+  .dot { width: 21px; height: 21px; border-radius: 50%; display: inline-grid; place-items: center; color: white; font-weight: 900; font-size: 12px; }
+  .dot-a { background: #16a34a; }
+  .dot-b { background: #dc2626; }
+  .compare-grid { display: grid; gap: 8px; }
+  .compare-item { padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 65%, var(--panel-solid)); }
+  .compare-item.a { border-left: 4px solid #16a34a; }
+  .compare-item.b { border-left: 4px solid #dc2626; }
+  .compare-item h3 { margin: 0 0 6px; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
+  .compare-item p { margin: 2px 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { padding: 10px; border-radius: 12px; background: color-mix(in srgb, var(--accent-soft) 45%, var(--panel-solid)); border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line)); }
+  .stat span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+  .stat strong { font-size: 19px; font-variant-numeric: tabular-nums; }
+  .action-row { display: flex; gap: 8px; margin-top: 11px; }
+  .action-row button { flex: 1; }
+
+  .boot-error {
+    position: absolute; inset: 20px; display: grid; place-items: center;
+    padding: 30px; text-align: center; color: #991b1b;
+    background: #fef2f2; border: 1px solid #fecaca; border-radius: 16px;
+    z-index: 10;
+  }
+
+  @keyframes pulseDot { from { opacity: .55; } to { opacity: 1; } }
+  @keyframes stageFlash {
+    from { opacity: .35; border-color: rgba(245,158,11,.55); }
+    to { opacity: 1; border-color: rgba(254,243,199,1); }
+  }
+  @keyframes bannerFlash {
+    from { transform: translateX(-50%) scale(.985); box-shadow: 0 12px 28px rgba(120,53,15,.28); }
+    to { transform: translateX(-50%) scale(1.015); box-shadow: 0 18px 44px rgba(251,191,36,.42); }
+  }
+
+  @media (max-width: 980px) {
+    html, body { height: auto; min-height: 100%; overflow: visible; }
+    .app { height: auto; min-height: 100dvh; grid-template-rows: auto auto; }
+    .topbar { align-items: flex-start; flex-direction: column; padding: 12px; }
+    .top-actions { width: 100%; flex-wrap: wrap; }
+    .pill { flex: 1 1 100%; justify-content: center; }
+    .layout { grid-template-columns: 1fr; overflow: visible; }
+    .stage { height: 58dvh; min-height: 390px; }
+    .sidebar { overflow: visible; border-left: 0; border-top: 1px solid var(--line); }
+    .topbar h1, .topbar p { white-space: normal; }
+    .legend { width: 174px; font-size: 11px; padding: 9px; }
+    .critical-banner { top: auto; bottom: 48px; }
+    .stage.critical .legend { top: 8px; }
+  }
+
+  @media (max-width: 560px) {
+    .stage { height: 56dvh; min-height: 360px; }
+    .legend { top: 8px; right: 8px; width: 158px; }
+    .hud { left: 8px; bottom: 8px; right: 8px; text-align: center; }
+    .preset-row { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">⛰</div>
+      <div>
+        <h1>山坡聚落落位实验室</h1>
+        <p>PixiJS + pixi-viewport｜等高线、溪流、既有小路与四栅格因子驱动的吊脚楼迁移</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span id="statusPill" class="pill">地形生成中</span>
+      <button id="demoBtn" class="primary" type="button">北坡南迁演示</button>
+      <button id="resetBtn" type="button">恢复初始村落</button>
+      <button id="viewBtn" type="button">复位视角</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section id="stage" class="stage" aria-label="可缩放和平移的山坡场地">
+      <div id="canvasHost" class="canvas-host"></div>
+
+      <div class="legend" aria-label="图例">
+        <h3>图例</h3>
+        <div class="legend-row"><span class="swatch forbidden"></span><span>陡坡禁建格</span></div>
+        <div class="legend-row"><span class="swatch critical"></span><span>可建/禁建临界带</span></div>
+        <div class="legend-row"><span class="line-swatch"></span><span>4 m 等高线</span></div>
+        <div class="legend-row"><span class="line-swatch stream"></span><span>溪流</span></div>
+        <div class="legend-row"><span class="line-swatch path"></span><span>既有小路</span></div>
+        <div class="legend-row"><span class="line-swatch trail"></span><span>淡色迁移轨迹</span></div>
+      </div>
+
+      <div id="criticalBanner" class="critical-banner" hidden>
+        25° 临界值已锁定：楼群停住不动，临界边界闪烁；继续拖低坡度上限后恢复迁移
+      </div>
+      <div class="hud">滚轮 / 双指缩放 · 拖拽平移 · 单击吊脚楼查看四项得分与理由</div>
+    </section>
+
+    <aside class="sidebar">
+      <section class="card" id="detailCard" aria-live="polite">
+        <div class="card-title">
+          <h2>单体落位诊断</h2>
+          <span id="selectedBadge" class="badge">未选择</span>
+        </div>
+        <div id="detailEmpty" class="empty">
+          单击地图中的任一栋简化吊脚楼，可展开坡度、坡向、水源、日照四项得分条、归一化权重贡献和具体落位理由。
+        </div>
+        <div id="detailBody" hidden></div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">
+          <h2>四因子权重滑块</h2>
+          <span class="hint-inline">权重自动归一化</span>
+        </div>
+        <div class="preset-row">
+          <button type="button" data-preset="balanced" class="active">均衡</button>
+          <button type="button" data-preset="sun">日照优先</button>
+          <button type="button" data-preset="water">近水</button>
+          <button type="button" data-preset="slope">缓坡</button>
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-label"><label for="wSlope">坡度权重</label><output id="wSlopeVal">25</output></div>
+          <input id="wSlope" type="range" min="0" max="100" step="1" value="25" />
+          <div class="slider-foot"><span>惩罚陡坡与临界格</span><b id="wSlopePct">25%</b></div>
+        </div>
+        <div class="slider-row">
+          <div class="slider-label"><label for="wAspect">坡向 / 朝南权重</label><output id="wAspectVal">25</output></div>
+          <input id="wAspect" type="range" min="0" max="100" step="1" value="25" />
+          <div class="slider-foot"><span>按真实方位角，正南 180° 最佳</span><b id="wAspectPct">25%</b></div>
+        </div>
+        <div class="slider-row">
+          <div class="slider-label"><label for="wWater">离水源权重</label><output id="wWaterVal">25</output></div>
+          <input id="wWater" type="range" min="0" max="100" step="1" value="25" />
+          <div class="slider-foot"><span>距溪流越近，取水得分越高</span><b id="wWaterPct">25%</b></div>
+        </div>
+        <div class="slider-row">
+          <div class="slider-label"><label for="wSun">日照时数权重</label><output id="wSunVal">25</output></div>
+          <input id="wSun" type="range" min="0" max="100" step="1" value="25" />
+          <div class="slider-foot"><span>拉到 100 后，北坡楼将成片迁向南坡</span><b id="wSunPct">25%</b></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">
+          <h2>准入阈值滑块</h2>
+          <span class="hint-inline">硬约束优先于评分</span>
+        </div>
+        <div class="threshold">
+          <div class="threshold-head">
+            <label for="tSlope">最大可建坡度</label>
+            <output id="tSlopeVal">33.0°</output>
+          </div>
+          <input id="tSlope" type="range" min="18" max="42" step="0.5" value="33" />
+          <div class="scale">
+            <span>18°</span>
+            <span class="critical-tick">◆ 25° 临界锁定值</span>
+            <span>42°</span>
+          </div>
+        </div>
+        <div class="threshold">
+          <div class="threshold-head">
+            <label for="tWater">最大取水距离</label>
+            <output id="tWaterVal">420 m</output>
+          </div>
+          <input id="tWater" type="range" min="120" max="600" step="10" value="420" />
+          <div class="scale"><span>120 m</span><span>600 m</span></div>
+        </div>
+        <div class="threshold">
+          <div class="threshold-head">
+            <label for="tSun">最低日照时数</label>
+            <output id="tSunVal">2.8 h</output>
+          </div>
+          <input id="tSun" type="range" min="2" max="8" step="0.1" value="2.8" />
+          <div class="scale"><span>2 h</span><span>8 h</span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-title"><h2>朝南缓坡 / 朝北陡坡对照</h2></div>
+        <div class="compare-buttons">
+          <button id="flyA" type="button"><span class="dot dot-a">A</span>定位朝南缓坡</button>
+          <button id="flyB" type="button"><span class="dot dot-b">B</span>定位朝北陡坡</button>
+        </div>
+        <div id="compareGrid" class="compare-grid"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-title"><h2>场地统计</h2></div>
+        <div id="statsGrid" class="stats-grid"></div>
+        <div class="action-row">
+          <button id="clearTrails" type="button">清除迁移轨迹</button>
+          <button id="fitBtn" type="button">完整场地</button>
+        </div>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script src="./vendor/pixi.min.js"></script>
+<script>
+  // pixi-viewport 的 UMD 外部全局名是 pixi_js，而 PixiJS v7 的浏览器全局名是 PIXI。
+  window.pixi_js = window.PIXI;
+</script>
+<script src="./vendor/pixi-viewport.umd.js"></script>
+
+<script>
+(() => {
+  "use strict";
+
+  const host = document.getElementById("canvasHost");
+  if (!window.PIXI || !window.pixi_viewport || !window.pixi_viewport.Viewport) {
+    host.innerHTML = '<div class="boot-error">PixiJS 或 pixi-viewport 未能从 CDN 加载。请检查网络后刷新。</div>';
+    return;
+  }
+
+  const P = window.PIXI;
+  const { Viewport } = window.pixi_viewport;
+  const $ = (id) => document.getElementById(id);
+
+  // ---------------------------------------------------------------------------
+  // 常量与确定性随机
+  // ---------------------------------------------------------------------------
+  const COLS = 104;
+  const ROWS = 72;
+  const CELL = 18;                 // 屏幕/世界像素
+  const CELL_M = 10;               // 每个栅格对应的实地距离：10 m
+  const WORLD_W = COLS * CELL;
+  const WORLD_H = ROWS * CELL;
+  const CONTOUR_INTERVAL = 4;      // 相邻等高线高差，单位 m
+  const CRITICAL_SLOPE = 25;       // 规划临界坡度，单位 °
+  const CRITICAL_BAND = 1.15;      // 临界带着宽，单位 °
+  const STREAM_BUFFER_M = 10;
+  const PATH_BUFFER_M = 3;
+  const HOUSE_COUNT = 54;
+  const ASPIRATION = 72;
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const deg2rad = Math.PI / 180;
+  const rad2deg = 180 / Math.PI;
+  const fmt = (v, n = 1) => Number(v).toFixed(n);
+
+  function mulberry32(seed) {
+    return function () {
+      let t = seed += 0x6D2B79F5;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const rand = mulberry32(1000397);
+
+  function angleDiff180(a, b) {
+    return Math.abs(((a - b + 540) % 360) - 180);
+  }
+
+  function azimuthLabel(deg) {
+    const dirs = ["北", "东北", "东", "东南", "南", "西南", "西", "西北"];
+    return dirs[Math.round(deg / 45) % 8];
+  }
+
+  function distToPolyline(c, r, pts) {
+    let best = Infinity;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const vx = b.c - a.c, vy = b.r - a.r;
+      const wx = c - a.c, wy = r - a.r;
+      const len2 = vx * vx + vy * vy || 1;
+      const t = clamp((wx * vx + wy * vy) / len2, 0, 1);
+      const px = a.c + vx * t, py = a.r + vy * t;
+      const d = Math.hypot(c - px, r - py);
+      if (d < best) best = d;
+    }
+    return best * CELL_M;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 状态与控件
+  // ---------------------------------------------------------------------------
+  const state = {
+    weights: { slope: 25, aspect: 25, water: 25, sun: 25 },
+    limits: { slope: 33, water: 420, sun: 2.8 },
+    selectedId: null,
+    criticalLock: false,
+    hasPlanned: false,
+    now: 0,
+    relocateTimer: 0,
+    lastPlanCount: 0,
+    cameraTween: null,
+    statsTimer: 0
+  };
+
+  const weightMeta = {
+    slope: { label: "坡度" },
+    aspect: { label: "坡向" },
+    water: { label: "水源" },
+    sun: { label: "日照" }
+  };
+
+  function syncStateFromControls() {
+    state.weights.slope = Number($("wSlope").value);
+    state.weights.aspect = Number($("wAspect").value);
+    state.weights.water = Number($("wWater").value);
+    state.weights.sun = Number($("wSun").value);
+    state.limits.slope = Number($("tSlope").value);
+    state.limits.water = Number($("tWater").value);
+    state.limits.sun = Number($("tSun").value);
+  }
+
+  function updateControlLabels() {
+    $("wSlopeVal").textContent = state.weights.slope;
+    $("wAspectVal").textContent = state.weights.aspect;
+    $("wWaterVal").textContent = state.weights.water;
+    $("wSunVal").textContent = state.weights.sun;
+
+    const sum = Object.values(state.weights).reduce((a, b) => a + b, 0) || 1;
+    for (const k of Object.keys(weightMeta)) {
+      $(`w${k[0].toUpperCase()}${k.slice(1)}Pct`).textContent =
+        Math.round(state.weights[k] / sum * 100) + "%";
+    }
+
+    $("tSlopeVal").textContent = state.limits.slope.toFixed(1) + "°";
+    $("tWaterVal").textContent = Math.round(state.limits.water) + " m";
+    $("tSunVal").textContent = state.limits.sun.toFixed(1) + " h";
+  }
+
+  // ---------------------------------------------------------------------------
+  // 生成山坡 DEM、真实方位角、坡度、水源距离与日照栅格
+  // ---------------------------------------------------------------------------
+  const noiseGridW = 15;
+  const noiseGridH = 11;
+  const noiseGrid = Array.from({ length: noiseGridW * noiseGridH }, () => rand() * 2 - 1);
+
+  function sampleNoise(nx, ny) {
+    const x = clamp(nx, 0, 1) * (noiseGridW - 1);
+    const y = clamp(ny, 0, 1) * (noiseGridH - 1);
+    const x0 = Math.floor(x), y0 = Math.floor(y);
+    const x1 = Math.min(noiseGridW - 1, x0 + 1);
+    const y1 = Math.min(noiseGridH - 1, y0 + 1);
+    const tx = x - x0, ty = y - y0;
+    const sx = tx * tx * (3 - 2 * tx);
+    const sy = ty * ty * (3 - 2 * ty);
+    const a = noiseGrid[y0 * noiseGridW + x0];
+    const b = noiseGrid[y0 * noiseGridW + x1];
+    const c = noiseGrid[y1 * noiseGridW + x0];
+    const d = noiseGrid[y1 * noiseGridW + x1];
+    return lerp(lerp(a, b, sx), lerp(c, d, sx), sy);
+  }
+
+  function elevationAt(c, r) {
+    const nx = c / (COLS - 1);
+    const ny = r / (ROWS - 1);
+
+    // 东西走向的不对称山脊：北坡窄而陡，南坡宽而缓。
+    const crestY = 0.42 + 0.025 * Math.sin(nx * Math.PI * 2 + 0.7);
+    const d = ny - crestY;
+    const sigma = d < 0 ? 0.118 : 0.36;
+    const amp = d < 0 ? 82 : 70;
+
+    let z = 22 + amp * Math.exp(-(d * d) / (2 * sigma * sigma));
+    z += 5.5 * Math.sin(nx * Math.PI * 4.1 + ny * 2.2);
+    z += 3.2 * Math.cos(nx * 11 - ny * 5);
+    z += 2.4 * sampleNoise(nx, ny);
+    return z;
+  }
+
+  // 溪流与既有小路均用连续折线表达，距离按折线投影计算。
+  const streamPts = [
+    { c: -3, r: 12 }, { c: 12, r: 18 }, { c: 22, r: 26 },
+    { c: 35, r: 31 }, { c: 48, r: 37 }, { c: 63, r: 43 },
+    { c: 78, r: 51 }, { c: 91, r: 56 }, { c: 107, r: 64 }
+  ];
+  const pathPts = [
+    { c: -2, r: 52 }, { c: 12, r: 49 }, { c: 22, r: 44 },
+    { c: 31, r: 40 }, { c: 40, r: 39 }, { c: 50, r: 35 },
+    { c: 60, r: 34 }, { c: 69, r: 30 }, { c: 82, r: 28 },
+    { c: 106, r: 22 }
+  ];
+
+  const heights = new Float32Array(COLS * ROWS);
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) heights[r * COLS + c] = elevationAt(c, r);
+  }
+
+  const cells = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const idx = r * COLS + c;
+      const h = heights[idx];
+
+      const cL = Math.max(0, c - 1), cR = Math.min(COLS - 1, c + 1);
+      const rU = Math.max(0, r - 1), rD = Math.min(ROWS - 1, r + 1);
+      const dxMeters = Math.max(1, cR - cL) * CELL_M;
+      const dyMeters = Math.max(1, rD - rU) * CELL_M;
+      const dhdx = (heights[r * COLS + cR] - heights[r * COLS + cL]) / dxMeters;
+      const dhdySouth = (heights[rD * COLS + c] - heights[rU * COLS + c]) / dyMeters;
+
+      // tan(slope)=等高距/等高线平距；DEM 梯度模长正是这一换算的栅格形式。
+      const gradientMagnitude = Math.hypot(dhdx, dhdySouth);
+      const slope = Math.atan(gradientMagnitude) * rad2deg;
+      const contourSpacingM = gradientMagnitude < 0.0001
+        ? Infinity
+        : CONTOUR_INTERVAL / gradientMagnitude;
+
+      // 方位角从正北顺时针：下坡向量在东-北坐标系为 (-dhdx, dhdySouth)。
+      let aspect = (Math.atan2(-dhdx, dhdySouth) * rad2deg + 360) % 360;
+      if (slope < 1.2) aspect = NaN;
+
+      const southness = Number.isNaN(aspect)
+        ? 0.86
+        : (Math.cos((aspect - 180) * deg2rad) + 1) / 2;
+
+      const nx = c / (COLS - 1), ny = r / (ROWS - 1);
+      let exposure = 0.31 + 0.56 * southness - 0.0105 * slope
+        + 0.055 * Math.sin(c * 0.37 + r * 0.21)
+        + 0.035 * sampleNoise(nx + 13.7, ny - 4.2);
+      exposure = clamp(exposure, 0.035, 0.98);
+      const sun = 2.75 + exposure * 7.35;
+
+      const waterD = distToPolyline(c, r, streamPts);
+      const pathD = distToPolyline(c, r, pathPts);
+
+      const slopeScore = clamp(100 - Math.max(0, slope - 5) * 2.55, 2, 100);
+      const aspectScore = Number.isNaN(aspect) ? 88 : southness * 100;
+      const waterScore = waterD <= 25
+        ? 96
+        : waterD <= 220
+          ? 96 - (waterD - 25) / 195 * 58
+          : clamp(38 - (waterD - 220) / 300 * 30, 8, 38);
+      const sunScore = clamp((sun - 2.75) / 7.35 * 100, 0, 100);
+
+      cells.push({
+        i: idx, c, r,
+        x: (c + 0.5) * CELL,
+        y: (r + 0.5) * CELL,
+        h, slope, contourSpacingM, aspect, sun, waterD, pathD,
+        scores: { slope: slopeScore, aspect: aspectScore, water: waterScore, sun: sunScore }
+      });
+    }
+  }
+
+  function cellAt(c, r) {
+    if (c < 0 || r < 0 || c >= COLS || r >= ROWS) return null;
+    return cells[r * COLS + c];
+  }
+
+  function findControlPoint(kind) {
+    let best = null;
+    for (const cell of cells) {
+      const { c, r, slope, aspect } = cell;
+      let score;
+      if (kind === "A") {
+        if (c < 16 || c > 61 || r < 42 || r > 64) continue;
+        const aErr = Number.isNaN(aspect) ? 28 : angleDiff180(aspect, 180);
+        score = Math.abs(slope - 9) * 2.4 + aErr * 0.16;
+      } else {
+        if (c < 15 || c > 61 || r < 14 || r > 34) continue;
+        const aErr = Number.isNaN(aspect) ? 20 : Math.min(aspect, 360 - aspect);
+        score = Math.abs(slope - 30) * 0.85 + aErr * 0.18;
+      }
+      if (!best || score < best.score) best = { ...cell, score };
+    }
+    return best;
+  }
+
+  const controlA = findControlPoint("A");
+  const controlB = findControlPoint("B");
+  const reserved = new Set();
+  for (const p of [controlA, controlB]) {
+    for (let dc = -1; dc <= 1; dc++) {
+      for (let dr = -1; dr <= 1; dr++) reserved.add(`${p.c + dc},${p.r + dr}`);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pixi Application 与 pixi-viewport
+  // ---------------------------------------------------------------------------
+  const app = new P.Application({
+    resizeTo: host,
+    antialias: true,
+    autoDensity: true,
+    resolution: Math.min(window.devicePixelRatio || 1, 2),
+    background: 0xb9c9ad
+  });
+  host.appendChild(app.view || app.canvas);
+  app.view.style.width = "100%";
+  app.view.style.height = "100%";
+
+  const viewport = new Viewport({
+    app,
+    events: app.renderer.events,
+    screenWidth: host.clientWidth || window.innerWidth,
+    screenHeight: host.clientHeight || window.innerHeight,
+    worldWidth: WORLD_W,
+    worldHeight: WORLD_H
+  });
+  app.stage.addChild(viewport);
+  viewport
+    .drag({ clampWheel: true })
+    .pinch()
+    .wheel({ smooth: 3 })
+    .decelerate({ friction: 0.94 })
+    .clamp({ direction: "all" })
+    .clampZoom({ minScale: 0.28, maxScale: 3.4 });
+
+  viewport.resize(host.clientWidth, host.clientHeight, WORLD_W, WORLD_H);
+  viewport.fitWorld(true);
+  viewport.moveCenter(WORLD_W / 2, WORLD_H / 2);
+
+  if ("ResizeObserver" in window) {
+    new ResizeObserver(() => {
+      const w = host.clientWidth, h = host.clientHeight;
+      if (w > 10 && h > 10) {
+        app.renderer.resize(w, h);
+        viewport.resize(w, h, WORLD_W, WORLD_H);
+      }
+    }).observe(host);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 地形底色 CanvasTexture
+  // ---------------------------------------------------------------------------
+  const baseCanvas = document.createElement("canvas");
+  baseCanvas.width = COLS;
+  baseCanvas.height = ROWS;
+  const baseCtx = baseCanvas.getContext("2d");
+  const baseImg = baseCtx.createImageData(COLS, ROWS);
+
+  const hypso = [
+    [0.00, [181, 214, 164]],
+    [0.28, [211, 211, 148]],
+    [0.55, [202, 176, 124]],
+    [0.78, [166, 137, 103]],
+    [1.00, [112, 98, 80]]
+  ];
+  const minH = Math.min(...heights);
+  const maxH = Math.max(...heights);
+
+  function hypsoColor(t) {
+    t = clamp(t, 0, 1);
+    for (let i = 0; i < hypso.length - 1; i++) {
+      const [ta, ca] = hypso[i], [tb, cb] = hypso[i + 1];
+      if (t <= tb) {
+        const k = (t - ta) / (tb - ta);
+        return [
+          Math.round(lerp(ca[0], cb[0], k)),
+          Math.round(lerp(ca[1], cb[1], k)),
+          Math.round(lerp(ca[2], cb[2], k))
+        ];
+      }
+    }
+    return hypso[hypso.length - 1][1];
+  }
+
+  for (const cell of cells) {
+    const idx = (cell.r * COLS + cell.c) * 4;
+    let [rr, gg, bb] = hypsoColor((cell.h - minH) / (maxH - minH));
+
+    // 简化山体阴影：北坡偏冷暗，南坡略暖亮。
+    let shade = 0.88;
+    if (!Number.isNaN(cell.aspect)) {
+      shade += 0.10 * Math.cos((cell.aspect - 315) * deg2rad);
+      const southWarm = Math.max(0, Math.cos((cell.aspect - 180) * deg2rad));
+      rr += southWarm * 10;
+      gg += southWarm * 5;
+    }
+    shade = clamp(shade, 0.72, 1.08);
+    baseImg.data[idx] = clamp(rr * shade, 0, 255);
+    baseImg.data[idx + 1] = clamp(gg * shade, 0, 255);
+    baseImg.data[idx + 2] = clamp(bb * shade, 0, 255);
+    baseImg.data[idx + 3] = 255;
+  }
+  baseCtx.putImageData(baseImg, 0, 0);
+
+  const baseTexture = P.Texture.from(baseCanvas);
+  baseTexture.baseTexture.scaleMode = P.SCALE_MODES.NEAREST;
+  const baseSprite = new P.Sprite(baseTexture);
+  baseSprite.width = WORLD_W;
+  baseSprite.height = WORLD_H;
+  viewport.addChild(baseSprite);
+
+  const gridGraphics = new P.Graphics();
+  gridGraphics.alpha = 0.16;
+  gridGraphics.lineStyle({ width: 0.6, color: 0x334155, alpha: 0.35 });
+  for (let c = 0; c <= COLS; c += 6) {
+    gridGraphics.moveTo(c * CELL + 0.5, 0);
+    gridGraphics.lineTo(c * CELL + 0.5, WORLD_H);
+  }
+  for (let r = 0; r <= ROWS; r += 6) {
+    gridGraphics.moveTo(0, r * CELL + 0.5);
+    gridGraphics.lineTo(WORLD_W, r * CELL + 0.5);
+  }
+  viewport.addChild(gridGraphics);
+
+  // ---------------------------------------------------------------------------
+  //  marching squares 等高线
+  // ---------------------------------------------------------------------------
+  const contourLayer = new P.Container();
+  viewport.addChild(contourLayer);
+  const contourNormal = new P.Graphics();
+  const contourIndex = new P.Graphics();
+  contourLayer.addChild(contourNormal, contourIndex);
+
+  const edgePoint = (edge, p0, p1, p2, p3, v0, v1, v2, v3, level) => {
+    let a, b, va, vb;
+    if (edge === 0) { a = p0; b = p1; va = v0; vb = v1; }
+    else if (edge === 1) { a = p1; b = p2; va = v1; vb = v2; }
+    else if (edge === 2) { a = p3; b = p2; va = v3; vb = v2; }
+    else { a = p0; b = p3; va = v0; vb = v3; }
+    const t = Math.abs(vb - va) < 1e-6 ? 0.5 : (level - va) / (vb - va);
+    return { x: lerp(a.x, b.x, clamp(t, 0, 1)), y: lerp(a.y, b.y, clamp(t, 0, 1)) };
+  };
+
+  const msSegments = {
+    1: [[0, 3]], 2: [[0, 1]], 3: [[1, 3]], 4: [[1, 2]],
+    5: [[0, 1], [2, 3]], 6: [[0, 2]], 7: [[2, 3]],
+    8: [[2, 3]], 9: [[0, 2]], 10: [[0, 3], [1, 2]],
+    11: [[1, 2]], 12: [[1, 3]], 13: [[0, 1]], 14: [[0, 3]]
+  };
+
+  function drawContours() {
+    contourNormal.clear();
+    contourIndex.clear();
+    const first = Math.ceil(minH / CONTOUR_INTERVAL) * CONTOUR_INTERVAL;
+    for (let level = first; level <= maxH; level += CONTOUR_INTERVAL) {
+      const isIndex = Math.round(level / CONTOUR_INTERVAL) % 5 === 0;
+      const g = isIndex ? contourIndex : contourNormal;
+      g.lineStyle({
+        width: isIndex ? 1.65 : 0.75,
+        color: isIndex ? 0x5f3c20 : 0x7b5736,
+        alpha: isIndex ? 0.72 : 0.46,
+        join: "round",
+        cap: "round"
+      });
+
+      for (let r = 0; r < ROWS - 1; r++) {
+        for (let c = 0; c < COLS - 1; c++) {
+          const v0 = heights[r * COLS + c];
+          const v1 = heights[r * COLS + c + 1];
+          const v2 = heights[(r + 1) * COLS + c + 1];
+          const v3 = heights[(r + 1) * COLS + c];
+          const caseCode = (v0 > level ? 1 : 0) | (v1 > level ? 2 : 0)
+            | (v2 > level ? 4 : 0) | (v3 > level ? 8 : 0);
+          const segs = msSegments[caseCode];
+          if (!segs) continue;
+
+          const p0 = { x: c * CELL, y: r * CELL };
+          const p1 = { x: (c + 1) * CELL, y: r * CELL };
+          const p2 = { x: (c + 1) * CELL, y: (r + 1) * CELL };
+          const p3 = { x: c * CELL, y: (r + 1) * CELL };
+          const ep = [
+            edgePoint(0, p0, p1, p2, p3, v0, v1, v2, v3, level),
+            edgePoint(1, p0, p1, p2, p3, v0, v1, v2, v3, level),
+            edgePoint(2, p0, p1, p2, p3, v0, v1, v2, v3, level),
+            edgePoint(3, p0, p1, p2, p3, v0, v1, v2, v3, level)
+          ];
+          for (const [ea, eb] of segs) {
+            g.moveTo(ep[ea].x, ep[ea].y);
+            g.lineTo(ep[eb].x, ep[eb].y);
+          }
+        }
+      }
+    }
+  }
+  drawContours();
+
+  // ---------------------------------------------------------------------------
+  // 溪流、小路
+  // ---------------------------------------------------------------------------
+  const waterGraphics = new P.Graphics();
+  viewport.addChild(waterGraphics);
+
+  function gridToWorldPoints(pts) {
+    return pts.map(p => ({ x: (p.c + 0.5) * CELL, y: (p.r + 0.5) * CELL }));
+  }
+
+  function drawSmoothPolyline(g, pts) {
+    if (pts.length < 2) return;
+    g.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length - 1; i++) {
+      const xc = (pts[i].x + pts[i + 1].x) / 2;
+      const yc = (pts[i].y + pts[i + 1].y) / 2;
+      g.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+    }
+    const last = pts[pts.length - 1];
+    g.lineTo(last.x, last.y);
+  }
+
+  const streamWorld = gridToWorldPoints(streamPts);
+  waterGraphics.lineStyle({ width: 9, color: 0x075985, alpha: 0.22, cap: "round", join: "round" });
+  drawSmoothPolyline(waterGraphics, streamWorld);
+  waterGraphics.lineStyle({ width: 4.5, color: 0x38bdf8, alpha: 0.92, cap: "round", join: "round" });
+  drawSmoothPolyline(waterGraphics, streamWorld);
+  waterGraphics.lineStyle({ width: 1.4, color: 0xe0f2fe, alpha: 0.85, cap: "round", join: "round" });
+  drawSmoothPolyline(waterGraphics, streamWorld);
+
+  const pathGraphics = new P.Graphics();
+  viewport.addChild(pathGraphics);
+  const pathWorld = gridToWorldPoints(pathPts);
+
+  function drawDashedWorld(g, pts, dash, gap) {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len;
+      for (let d = 0; d < len; d += dash + gap) {
+        const d2 = Math.min(len, d + dash);
+        g.moveTo(a.x + ux * d, a.y + uy * d);
+        g.lineTo(a.x + ux * d2, a.y + uy * d2);
+      }
+    }
+  }
+  pathGraphics.lineStyle({ width: 5.2, color: 0x713f12, alpha: 0.28, cap: "round" });
+  drawDashedWorld(pathGraphics, pathWorld, 13, 9);
+  pathGraphics.lineStyle({ width: 2.2, color: 0xf2c36b, alpha: 0.96, cap: "round" });
+  drawDashedWorld(pathGraphics, pathWorld, 11, 10);
+
+  // ---------------------------------------------------------------------------
+  // 动态禁建区 / 临界带 CanvasTexture 与坡度边界
+  // ---------------------------------------------------------------------------
+  const zoneCanvas = document.createElement("canvas");
+  zoneCanvas.width = COLS;
+  zoneCanvas.height = ROWS;
+  const zoneCtx = zoneCanvas.getContext("2d");
+  const zoneTexture = P.Texture.from(zoneCanvas);
+  zoneTexture.baseTexture.scaleMode = P.SCALE_MODES.NEAREST;
+  const zoneSprite = new P.Sprite(zoneTexture);
+  zoneSprite.width = WORLD_W;
+  zoneSprite.height = WORLD_H;
+  viewport.addChild(zoneSprite);
+
+  const boundaryGraphics = new P.Graphics();
+  viewport.addChild(boundaryGraphics);
+
+  function isForbiddenCell(cell) {
+    return cell.slope > state.limits.slope + 1e-6;
+  }
+  function isCriticalCell(cell) {
+    return !isForbiddenCell(cell) && cell.slope >= state.limits.slope - CRITICAL_BAND;
+  }
+  function physicalBlocked(cell) {
+    return cell.waterD < STREAM_BUFFER_M || cell.pathD < PATH_BUFFER_M;
+  }
+  function hardViolations(cell) {
+    const out = [];
+    if (cell.slope > state.limits.slope + 1e-6) out.push("slope");
+    if (cell.waterD > state.limits.water) out.push("water");
+    if (cell.sun < state.limits.sun - 1e-6) out.push("sun");
+    if (cell.waterD < STREAM_BUFFER_M) out.push("stream");
+    if (cell.pathD < PATH_BUFFER_M) out.push("path");
+    return out;
+  }
+
+  let forbiddenCount = 0;
+  let criticalCount = 0;
+
+  function drawZones() {
+    const img = zoneCtx.createImageData(COLS, ROWS);
+    forbiddenCount = 0;
+    criticalCount = 0;
+    for (const cell of cells) {
+      const k = (cell.r * COLS + cell.c) * 4;
+      if (isForbiddenCell(cell)) {
+        forbiddenCount++;
+        img.data[k] = 220; img.data[k + 1] = 38; img.data[k + 2] = 38; img.data[k + 3] = 112;
+      } else if (isCriticalCell(cell)) {
+        criticalCount++;
+        img.data[k] = 245; img.data[k + 1] = 158; img.data[k + 2] = 11; img.data[k + 3] = 118;
+      } else {
+        img.data[k + 3] = 0;
+      }
+    }
+    zoneCtx.putImageData(img, 0, 0);
+    zoneTexture.baseTexture.update();
+    drawSlopeBoundary();
+  }
+
+  function drawSlopeBoundary() {
+    boundaryGraphics.clear();
+    const level = state.limits.slope;
+
+    // 外发光宽线
+    boundaryGraphics.lineStyle({ width: 8, color: 0xf59e0b, alpha: 0.20, cap: "round", join: "round" });
+    for (let r = 0; r < ROWS - 1; r++) {
+      for (let c = 0; c < COLS - 1; c++) {
+        const a = cellAt(c, r), b = cellAt(c + 1, r);
+        const cc = cellAt(c + 1, r + 1), d = cellAt(c, r + 1);
+        const code = (a.slope > level ? 1 : 0) | (b.slope > level ? 2 : 0)
+          | (cc.slope > level ? 4 : 0) | (d.slope > level ? 8 : 0);
+        const segs = msSegments[code];
+        if (!segs) continue;
+        // 以四个栅格中心为 marching-square 角点。
+        const p0 = { x: a.x, y: a.y }, p1 = { x: b.x, y: b.y };
+        const p2 = { x: cc.x, y: cc.y }, p3 = { x: d.x, y: d.y };
+        const ep = [
+          edgePoint(0, p0, p1, p2, p3, a.slope, b.slope, cc.slope, d.slope, level),
+          edgePoint(1, p0, p1, p2, p3, a.slope, b.slope, cc.slope, d.slope, level),
+          edgePoint(2, p0, p1, p2, p3, a.slope, b.slope, cc.slope, d.slope, level),
+          edgePoint(3, p0, p1, p2, p3, a.slope, b.slope, cc.slope, d.slope, level)
+        ];
+        for (const [ea, eb] of segs) {
+          boundaryGraphics.moveTo(ep[ea].x, ep[ea].y);
+          boundaryGraphics.lineTo(ep[eb].x, ep[eb].y);
+        }
+      }
+    }
+
+    boundaryGraphics.lineStyle({ width: 2.2, color: 0xfff7ed, alpha: 0.95, cap: "round", join: "round" });
+    for (let r = 0; r < ROWS - 1; r++) {
+      for (let c = 0; c < COLS - 1; c++) {
+        const a = cellAt(c, r), b = cellAt(c + 1, r);
+        const cc = cellAt(c + 1, r + 1), d = cellAt(c, r + 1);
+        const code = (a.slope > level ? 1 : 0) | (b.slope > level ? 2 : 0)
+          | (cc.slope > level ? 4 : 0) | (d.slope > level ? 8 : 0);
+        const segs = msSegments[code];
+        if (!segs) continue;
+        const p0 = { x: a.x, y: a.y }, p1 = { x: b.x, y: b.y };
+        const p2 = { x: cc.x, y: cc.y }, p3 = { x: d.x, y: d.y };
+        const ep = [
+          edgePoint(0, p0, p1, p2, p3, a.slope, b.slope, cc.slope, d.slope, level),
+          edgePoint(1, p0, p1, p2, p3, a.slope, b.slope, cc.slope, d.slope, level),
+          edgePoint(2, p0, p1, p2, p3, a.slope, b.slope, cc.slope, d.slope, level),
+          edgePoint(3, p0, p1, p2, p3, a.slope, b.slope, cc.slope, d.slope, level)
+        ];
+        for (const [ea, eb] of segs) {
+          boundaryGraphics.moveTo(ep[ea].x, ep[ea].y);
+          boundaryGraphics.lineTo(ep[eb].x, ep[eb].y);
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 对照点标记
+  // ---------------------------------------------------------------------------
+  const controlLayer = new P.Container();
+  viewport.addChild(controlLayer);
+  const pulseRings = [];
+
+  function makeControlMarker(point, letter, color, title) {
+    const g = new P.Container();
+    g.x = point.x; g.y = point.y;
+
+    const ring = new P.Graphics();
+    ring.lineStyle({ width: 2, color, alpha: 0.8 });
+    ring.drawCircle(0, 0, 18);
+    g.addChild(ring);
+    pulseRings.push({ graphic: ring, offset: letter === "A" ? 0 : 0.5 });
+
+    const core = new P.Graphics();
+    core.beginFill(color, 0.96);
+    core.lineStyle(3, 0xffffff, 0.95);
+    core.drawCircle(0, 0, 13);
+    core.endFill();
+    g.addChild(core);
+
+    const text = new P.Text(letter, {
+      fontFamily: "system-ui, sans-serif",
+      fontSize: 15,
+      fontWeight: "900",
+      fill: 0xffffff,
+      align: "center"
+    });
+    text.anchor.set(0.5);
+    g.addChild(text);
+
+    const label = new P.Text(title, {
+      fontFamily: '"Microsoft YaHei", system-ui, sans-serif',
+      fontSize: 13,
+      fontWeight: "700",
+      fill: 0x102033,
+      stroke: 0xffffff,
+      strokeThickness: 4
+    });
+    label.anchor.set(0, 0.5);
+    label.x = 18;
+    label.y = -17;
+    g.addChild(label);
+
+    controlLayer.addChild(g);
+    return g;
+  }
+
+  makeControlMarker(controlA, "A", 0x16a34a, "A 朝南缓坡");
+  makeControlMarker(controlB, "B", 0xdc2626, "B 朝北陡坡");
+
+  // ---------------------------------------------------------------------------
+  // 迁移轨迹层、选中框、吊脚楼
+  // ---------------------------------------------------------------------------
+  const trailLayer = new P.Graphics();
+  viewport.addChild(trailLayer);
+
+  const houseLayer = new P.Container();
+  viewport.addChild(houseLayer);
+
+  const selectionLayer = new P.Graphics();
+  viewport.addChild(selectionLayer);
+
+  const occupancy = new Map();
+  const occKey = (c, r) => `${c},${r}`;
+  const houses = [];
+  let trails = [];
+
+  function occupancyFree(c, r, exceptId = null) {
+    if (reserved.has(occKey(c, r))) return false;
+    for (let dc = -1; dc <= 1; dc++) {
+      for (let dr = -1; dr <= 1; dr++) {
+        const id = occupancy.get(occKey(c + dc, r + dr));
+        if (id !== undefined && id !== exceptId) return false;
+      }
+    }
+    return true;
+  }
+
+  function createHouseView(index) {
+    const outer = new P.Container();
+    const symbol = new P.Container();
+    outer.addChild(symbol);
+
+    const g = new P.Graphics();
+
+    // 阴影
+    g.beginFill(0x0f172a, 0.22);
+    g.drawEllipse(1.5, 6, 17, 8);
+    g.endFill();
+
+    // 吊脚平台 / 矩形屋身
+    g.beginFill(0x7c4a21, 1);
+    g.lineStyle(1.2, 0x3f2a16, 0.95);
+    g.drawRoundedRect(-15, -9, 30, 18, 2.5);
+    g.endFill();
+
+    // 四角吊脚
+    g.beginFill(0x2b1d12, 0.95);
+    for (const x of [-12, 12]) {
+      for (const y of [-7, 7]) g.drawCircle(x, y, 1.7);
+    }
+    g.endFill();
+
+    // 坡屋顶两个坡面与屋脊
+    const hueShift = index % 5;
+    const roofDark = [0x8f2f16, 0x9a3412, 0x7c2d12, 0x9f1239, 0x854d0e][hueShift];
+    const roofLight = [0xc2410c, 0xea580c, 0xb45309, 0xbe123c, 0xa16207][hueShift];
+
+    g.beginFill(roofLight, 0.98);
+    g.lineStyle(1, 0x5b2513, 0.8);
+    g.drawPolygon([-16, -10, 16, -10, 13, 0, -13, 0]);
+    g.endFill();
+
+    g.beginFill(roofDark, 0.98);
+    g.drawPolygon([-13, 0, 13, 0, 16, 10, -16, 10]);
+    g.endFill();
+
+    g.lineStyle(1.5, 0xfed7aa, 0.78);
+    g.moveTo(-12.5, 0);
+    g.lineTo(12.5, 0);
+
+    // 小檐口
+    g.lineStyle(1, 0x431407, 0.55);
+    g.drawRect(-16, -10, 32, 20);
+
+    symbol.addChild(g);
+    outer.symbol = symbol;
+    houseLayer.addChild(outer);
+    return outer;
+  }
+
+  for (let i = 0; i < HOUSE_COUNT; i++) {
+    houses.push({
+      id: i,
+      c: -1, r: -1, cellIndex: -1,
+      view: createHouseView(i),
+      move: null,
+      lastMigration: null
+    });
+  }
+
+  function weightedScore(cell) {
+    const w = state.weights;
+    const sum = w.slope + w.aspect + w.water + w.sun;
+    if (sum <= 0) {
+      const total = (cell.scores.slope + cell.scores.aspect + cell.scores.water + cell.scores.sun) / 4;
+      return { total, norm: { slope: .25, aspect: .25, water: .25, sun: .25 }, contributions: { ...cell.scores } };
+    }
+    const norm = {
+      slope: w.slope / sum,
+      aspect: w.aspect / sum,
+      water: w.water / sum,
+      sun: w.sun / sum
+    };
+    const contributions = {};
+    let total = 0;
+    for (const k of Object.keys(norm)) {
+      contributions[k] = cell.scores[k] * norm[k];
+      total += contributions[k];
+    }
+    return { total, norm, contributions };
+  }
+
+  function initialPlacement() {
+    occupancy.clear();
+    trails = [];
+    trailLayer.clear();
+
+    const seeds = [
+      { c: controlA.c, r: controlA.r, n: 13, radius: 7.5 },
+      { c: controlB.c, r: controlB.r, n: 12, radius: 6.2 },
+      { c: Math.round(0.68 * (COLS - 1)), r: Math.round(0.50 * (ROWS - 1)), n: 12, radius: 9.5 },
+      { c: Math.round(0.16 * (COLS - 1)), r: Math.round(0.38 * (ROWS - 1)), n: 9, radius: 7.5 },
+      { c: Math.round(0.80 * (COLS - 1)), r: Math.round(0.72 * (ROWS - 1)), n: 8, radius: 8.5 }
+    ];
+
+    let id = 0;
+    for (const seed of seeds) {
+      const candidates = [];
+      const maxR = Math.ceil(seed.radius) + 2;
+      for (let dr = -maxR; dr <= maxR; dr++) {
+        for (let dc = -maxR; dc <= maxR; dc++) {
+          const c = seed.c + dc, r = seed.r + dr;
+          const cell = cellAt(c, r);
+          if (!cell) continue;
+          const seedDist = Math.hypot(dc, dr);
+          if (seedDist > seed.radius + 1.8) continue;
+          if (physicalBlocked(cell)) continue;
+          if (cell.slope > 34.5 || cell.waterD > 520 || cell.sun < 2.5) continue;
+          candidates.push({ cell, seedDist });
+        }
+      }
+
+      for (let n = 0; n < seed.n && id < HOUSE_COUNT; n++, id++) {
+        let best = null;
+        for (const cand of candidates) {
+          const cell = cand.cell;
+          if (!occupancyFree(cell.c, cell.r, id)) continue;
+          const ev = weightedScore(cell);
+          const cost = cand.seedDist * 10.5
+            + (100 - ev.total) * 0.34
+            + Math.min(cell.pathD, 100) * 0.025;
+          if (!best || cost < best.cost) best = { cell, cost };
+        }
+
+        // 若局部过密，则向更大范围寻找。
+        if (!best) {
+          for (const cell of cells) {
+            if (physicalBlocked(cell) || cell.slope > 34.5) continue;
+            if (!occupancyFree(cell.c, cell.r, id)) continue;
+            const dSeed = Math.hypot(cell.c - seed.c, cell.r - seed.r);
+            const ev = weightedScore(cell);
+            const cost = dSeed * 9 + (100 - ev.total) * 0.45;
+            if (!best || cost < best.cost) best = { cell, cost };
+          }
+        }
+
+        const h = houses[id];
+        const cell = best.cell;
+        h.c = cell.c; h.r = cell.r; h.cellIndex = cell.i;
+        h.move = null;
+        h.lastMigration = null;
+        occupancy.set(occKey(cell.c, cell.r), id);
+        h.view.x = cell.x;
+        h.view.y = cell.y;
+        h.view.alpha = 1;
+        h.view.symbol.rotation = (Number.isNaN(cell.aspect) ? 0 : cell.aspect * deg2rad)
+          + (id % 7 - 3) * 0.018;
+      }
+    }
+
+    // 防御性补齐，保证几十栋全部落位且互不重叠。
+    for (; id < HOUSE_COUNT; id++) {
+      const cell = cells
+        .filter(c => !physicalBlocked(c) && c.slope <= state.limits.slope && occupancyFree(c.c, c.r, id))
+        .sort((a, b) => weightedScore(b).total - weightedScore(a).total)[0];
+      if (!cell) break;
+      const h = houses[id];
+      h.c = cell.c; h.r = cell.r; h.cellIndex = cell.i;
+      occupancy.set(occKey(cell.c, cell.r), id);
+      h.view.x = cell.x; h.view.y = cell.y;
+      h.view.symbol.rotation = 0;
+    }
+
+    state.selectedId = null;
+    renderDetail();
+    updateCompare();
+    updateStats();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 就近、无重叠的重新落位
+  // ---------------------------------------------------------------------------
+  function findNearestAcceptableCell(house, currentEval, hardFail) {
+    const startC = house.c, startR = house.r;
+    const requiredScore = hardFail ? 54 : Math.max(ASPIRATION, currentEval.total + 9);
+
+    // 由近及远的栅格环：第一圈出现达到综合分数门槛的可建空格即从该圈择优。
+    const maxRing = Math.max(COLS, ROWS);
+    let fallback = null;
+
+    for (let radius = 1; radius <= maxRing; radius++) {
+      const ringCandidates = [];
+      const minC = Math.max(0, startC - radius), maxC = Math.min(COLS - 1, startC + radius);
+      const minR = Math.max(0, startR - radius), maxR = Math.min(ROWS - 1, startR + radius);
+
+      for (let r = minR; r <= maxR; r++) {
+        for (let c = minC; c <= maxC; c++) {
+          if (Math.max(Math.abs(c - startC), Math.abs(r - startR)) !== radius) continue;
+          const cell = cellAt(c, r);
+          if (!cell || physicalBlocked(cell)) continue;
+          if (hardViolations(cell).length) continue;
+          if (!occupancyFree(c, r, house.id)) continue;
+
+          const ev = weightedScore(cell);
+          const item = { cell, ev, dist: Math.hypot(c - startC, r - startR) };
+          if (!fallback || ev.total > fallback.ev.total) fallback = item;
+          if (ev.total >= requiredScore) ringCandidates.push(item);
+        }
+      }
+
+      if (ringCandidates.length) {
+        ringCandidates.sort((a, b) =>
+          b.ev.total - a.ev.total || a.dist - b.dist || a.cell.waterD - b.cell.waterD);
+        return ringCandidates[0];
+      }
+
+      // 硬约束搬迁时，若附近已有合法但分数一般的格，半径到 14 后也可采用，避免跨全场跳跃。
+      if (hardFail && radius >= 10 && fallback && fallback.ev.total >= 48) return fallback;
+    }
+
+    return fallback;
+  }
+
+  function curveControl(from, to, id) {
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    const bend = clamp(len * 0.13, 12, 70) * (id % 2 ? 1 : -1);
+    return {
+      x: (from.x + to.x) / 2 + (-dy / len) * bend,
+      y: (from.y + to.y) / 2 + (dx / len) * bend
+    };
+  }
+
+  function planRelocations(trigger = "slider") {
+    if (state.criticalLock) {
+      setStatus("locked", "25° 临界锁定：楼群停住，边界闪烁");
+      return;
+    }
+
+    syncStateFromControls();
+    state.hasPlanned = true;
+    const planned = [];
+
+    const assessed = houses.map(h => {
+      const cell = cellAt(h.c, h.r);
+      const ev = weightedScore(cell);
+      const violations = hardViolations(cell);
+      const unhappy = violations.length > 0 || ev.total < ASPIRATION;
+      return { h, cell, ev, violations, unhappy };
+    }).filter(x => x.unhappy);
+
+    // 最严重、得分最低者先选位，给北坡南迁形成有序波次。
+    assessed.sort((a, b) => {
+      if ((b.violations.length > 0) !== (a.violations.length > 0)) {
+        return b.violations.length - a.violations.length;
+      }
+      return a.ev.total - b.ev.total;
+    });
+
+    assessed.forEach((item, order) => {
+      const { h, ev, violations } = item;
+      const hardFail = violations.length > 0;
+      const target = findNearestAcceptableCell(h, ev, hardFail);
+      if (!target || target.cell.i === h.cellIndex) return;
+
+      const from = { x: h.view.x, y: h.view.y };
+      const to = { x: target.cell.x, y: target.cell.y };
+      const control = curveControl(from, to, h.id);
+      const distanceCells = Math.hypot(target.cell.c - h.c, target.cell.r - h.r);
+
+      occupancy.delete(occKey(h.c, h.r));
+      occupancy.set(occKey(target.cell.c, target.cell.r), h.id);
+
+      h.lastMigration = {
+        trigger,
+        fromIndex: h.cellIndex,
+        fromTotal: ev.total,
+        fromSlope: item.cell.slope,
+        fromAspect: item.cell.aspect,
+        fromSun: item.cell.sun,
+        toTotal: target.ev.total,
+        distanceM: distanceCells * CELL_M,
+        reasons: violations.slice(),
+        order
+      };
+
+      h.c = target.cell.c;
+      h.r = target.cell.r;
+      h.cellIndex = target.cell.i;
+      h.move = {
+        fromX: from.x, fromY: from.y,
+        cx: control.x, cy: control.y,
+        toX: to.x, toY: to.y,
+        elapsed: 0,
+        delay: Math.min(order * 55, 650),
+        duration: clamp(900 + distanceCells * 42, 1050, 2300)
+      };
+
+      trails.push({ from, control, to, id: h.id });
+      planned.push(h.id);
+    });
+
+    // 只保留每栋楼最新一条轨迹，避免反复拖动后轨迹堆叠。
+    const latestById = new Map();
+    for (const t of trails) latestById.set(t.id, t);
+    trails = [...latestById.values()];
+    drawTrails();
+
+    state.lastPlanCount = planned.length;
+    updateStats();
+    renderDetail();
+    updateCompare();
+
+    if (planned.length) {
+      setStatus("busy", `${planned.length} 栋楼正按就近原则迁移，最终落位已做碰撞避让`);
+    } else {
+      setStatus("ready", "当前阈值下没有需要迁移的楼");
+    }
+  }
+
+  function drawTrails() {
+    trailLayer.clear();
+
+    // 白色淡底
+    trailLayer.lineStyle({ width: 5, color: 0xe0f2fe, alpha: 0.22, cap: "round" });
+    for (const t of trails) {
+      trailLayer.moveTo(t.from.x, t.from.y);
+      trailLayer.quadraticCurveTo(t.control.x, t.control.y, t.to.x, t.to.y);
+    }
+
+    // 淡蓝迁移线
+    trailLayer.lineStyle({ width: 2.1, color: 0x7dd3fc, alpha: 0.62, cap: "round" });
+    for (const t of trails) {
+      trailLayer.moveTo(t.from.x, t.from.y);
+      trailLayer.quadraticCurveTo(t.control.x, t.control.y, t.to.x, t.to.y);
+
+      const end = quadPoint(t.from, t.control, t.to, 1);
+      const before = quadPoint(t.from, t.control, t.to, 0.94);
+      const ang = Math.atan2(end.y - before.y, end.x - before.x);
+      const size = 7;
+      trailLayer.beginFill(0xbae6fd, 0.72);
+      trailLayer.drawPolygon([
+        end.x, end.y,
+        end.x - Math.cos(ang - 0.45) * size,
+        end.y - Math.sin(ang - 0.45) * size,
+        end.x - Math.cos(ang + 0.45) * size,
+        end.y - Math.sin(ang + 0.45) * size
+      ]);
+      trailLayer.endFill();
+    }
+  }
+
+  function quadPoint(a, q, b, t) {
+    const u = 1 - t;
+    return {
+      x: u * u * a.x + 2 * u * t * q.x + t * t * b.x,
+      y: u * u * a.y + 2 * u * t * q.y + t * t * b.y
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // HTML 详情、对照点、统计
+  // ---------------------------------------------------------------------------
+  function scoreColor(v) {
+    if (v >= 72) return "var(--good)";
+    if (v >= 52) return "var(--warn)";
+    return "var(--bad)";
+  }
+
+  function scoreBar(key, label, value, meta) {
+    return `
+      <div class="score-row">
+        <div class="score-head">
+          <label>${label}</label>
+          <output style="color:${scoreColor(value)}">${Math.round(value)}</output>
+        </div>
+        <div class="bar"><i style="width:${clamp(value, 0, 100)}%;background:${scoreColor(value)}"></i></div>
+        <div class="score-meta"><span>${meta}</span></div>
+      </div>`;
+  }
+
+  function renderDetail() {
+    const h = state.selectedId === null ? null : houses[state.selectedId];
+    if (!h || h.c < 0) {
+      $("detailEmpty").hidden = false;
+      $("detailBody").hidden = true;
+      $("selectedBadge").textContent = "未选择";
+      $("selectedBadge").className = "badge";
+      return;
+    }
+
+    $("detailEmpty").hidden = true;
+    $("detailBody").hidden = false;
+
+    const cell = cellAt(h.c, h.r);
+    const ev = weightedScore(cell);
+    const violations = hardViolations(cell);
+    const moving = !!h.move;
+    const locked = state.criticalLock;
+
+    const badge = $("selectedBadge");
+    if (locked) {
+      badge.textContent = "临界锁定";
+      badge.className = "badge locked";
+    } else if (moving) {
+      badge.textContent = "迁移中";
+      badge.className = "badge moving";
+    } else if (violations.length) {
+      badge.textContent = "不满足硬约束";
+      badge.className = "badge moving";
+    } else {
+      badge.textContent = "已落位";
+      badge.className = "badge";
+    }
+
+    const aspectText = Number.isNaN(cell.aspect)
+      ? "平地 / 坡向不明显"
+      : `${cell.aspect.toFixed(0)}°（${azimuthLabel(cell.aspect)}坡）`;
+
+    let html = `
+      <div class="detail-head">
+        <div>
+          <h3>吊脚楼 #${String(h.id + 1).padStart(2, "0")}</h3>
+          <div class="detail-coord">
+            栅格 C${cell.c + 1} / R${cell.r + 1} · 实地坐标 ${Math.round(cell.c * CELL_M)} m E, ${Math.round((ROWS - cell.r) * CELL_M)} m N<br>
+            高程 ${cell.h.toFixed(1)} m · 轮廓：矩形屋身 + 双坡屋顶
+          </div>
+        </div>
+      </div>
+
+      ${scoreBar("slope", "坡度得分", cell.scores.slope,
+        `${cell.slope.toFixed(1)}° · 权重 ${(ev.norm.slope * 100).toFixed(0)}% · 贡献 ${ev.contributions.slope.toFixed(1)}`)}
+      ${scoreBar("aspect", "坡向得分", cell.scores.aspect,
+        `${aspectText} · 权重 ${(ev.norm.aspect * 100).toFixed(0)}% · 贡献 ${ev.contributions.aspect.toFixed(1)}`)}
+      ${scoreBar("water", "水源得分", cell.scores.water,
+        `距溪流 ${cell.waterD.toFixed(0)} m · 权重 ${(ev.norm.water * 100).toFixed(0)}% · 贡献 ${ev.contributions.water.toFixed(1)}`)}
+      ${scoreBar("sun", "日照得分", cell.scores.sun,
+        `约 ${cell.sun.toFixed(1)} h/日 · 权重 ${(ev.norm.sun * 100).toFixed(0)}% · 贡献 ${ev.contributions.sun.toFixed(1)}`)}
+
+      <div class="total-line">
+        <span>当前权重综合落位分</span>
+        <strong>${ev.total.toFixed(1)}</strong>
+      </div>
+
+      <ul class="reasons">`;
+
+    const slopeClass = violations.includes("slope") ? "bad" : isCriticalCell(cell) ? "warn" : "good";
+    const spacingText = Number.isFinite(cell.contourSpacingM)
+      ? `${Math.max(1, cell.contourSpacingM).toFixed(0)} m`
+      : "很宽";
+    html += `<li class="${slopeClass}" data-icon="⛰">
+      坡度 <b>${cell.slope.toFixed(1)}°</b>：相邻等高线高差为 <b>${CONTOUR_INTERVAL} m</b>，本格推算等高线平距约 <b>${spacingText}</b>，
+      按 tanθ = ${CONTOUR_INTERVAL} / L 换算；当前上限 ${state.limits.slope.toFixed(1)}°，
+      ${violations.includes("slope") ? "已判为禁建格。" : isCriticalCell(cell) ? "正处于可建/禁建临界带。" : "属于可建缓坡。"}
+    </li>`;
+
+    const aspectClass = cell.scores.aspect >= 70 ? "good" : cell.scores.aspect >= 40 ? "warn" : "bad";
+    html += `<li class="${aspectClass}" data-icon="🧭">
+      坡向按真实方位角计算为 <b>${aspectText}</b>；正南 = 180°，因此朝南坡面在坡向和日照两项同时得分。
+    </li>`;
+
+    const waterClass = violations.includes("water") || violations.includes("stream") ? "bad" : cell.waterD < 150 ? "good" : "warn";
+    html += `<li class="${waterClass}" data-icon="💧">
+      离溪流 <b>${cell.waterD.toFixed(0)} m</b>${violations.includes("stream") ? "，但小于溪流缓冲距离，不能直接压在水边。" : "，吊脚形式适应坡地与近水湿度。"}
+      ${violations.includes("water") ? `超过当前 ${state.limits.water} m 取水距离上限。` : ""}
+    </li>`;
+
+    const sunClass = violations.includes("sun") ? "bad" : cell.sun >= 7 ? "good" : cell.sun >= 5 ? "warn" : "bad";
+    html += `<li class="${sunClass}" data-icon="☀">
+      栅格日照约 <b>${cell.sun.toFixed(1)} 小时</b>${violations.includes("sun") ? `，低于 ${state.limits.sun.toFixed(1)} h 下限。` : "，满足当前日照阈值。"}
+    </li>`;
+
+    if (h.lastMigration) {
+      const m = h.lastMigration;
+      html += `<li class="good" data-icon="↗">
+        最近一轮按<b>就近原则</b>迁移 <b>${m.distanceM.toFixed(0)} m</b>：综合分
+        ${m.fromTotal.toFixed(1)} → ${m.toTotal.toFixed(1)}；新落位已通过 3×3 栅格碰撞检查，不与其他楼重叠。
+        原址坡度 ${m.fromSlope.toFixed(1)}°、日照 ${m.fromSun.toFixed(1)} h。
+      </li>`;
+    } else {
+      html += `<li data-icon="🧩">
+        初始村落由四个栅格得分、种子村中心距离、溪流/小路缓冲和楼间最小间距共同分配；拖动任一权重或阈值后，不满足的楼才会重定位。
+      </li>`;
+    }
+
+    if (state.criticalLock) {
+      html += `<li class="warn" data-icon="⚠">
+        坡度滑块正好位于 <b>25.0°</b> 临界值：迁移循环挂起，楼群停在当前位置，琥珀色边界正在闪烁。
+      </li>`;
+    }
+
+    html += `</ul>`;
+    $("detailBody").innerHTML = html;
+  }
+
+  function compareItemHTML(p, kind) {
+    const ev = weightedScore(p);
+    const aspect = Number.isNaN(p.aspect) ? "平地" : `${p.aspect.toFixed(0)}° ${azimuthLabel(p.aspect)}`;
+    return `
+      <div class="compare-item ${kind.toLowerCase()}">
+        <h3><span>${kind}. ${kind === "A" ? "朝南缓坡对照点" : "朝北陡坡对照点"}</span><output>${ev.total.toFixed(0)}</output></h3>
+        <p>坡度 <b>${p.slope.toFixed(1)}°</b>｜坡向 <b>${aspect}</b></p>
+        <p>溪流 <b>${p.waterD.toFixed(0)} m</b>｜日照 <b>${p.sun.toFixed(1)} h</b></p>
+        <p>四项分：${p.scores.slope.toFixed(0)} / ${p.scores.aspect.toFixed(0)} / ${p.scores.water.toFixed(0)} / ${p.scores.sun.toFixed(0)}</p>
+      </div>`;
+  }
+
+  function updateCompare() {
+    if (!controlA || !controlB) return;
+    $("compareGrid").innerHTML = compareItemHTML(controlA, "A") + compareItemHTML(controlB, "B");
+  }
+
+  function updateStats() {
+    const moving = houses.filter(h => h.move).length;
+    const unsatisfied = houses.filter(h => {
+      const cell = cellAt(h.c, h.r);
+      return hardViolations(cell).length || weightedScore(cell).total < ASPIRATION;
+    }).length;
+
+    const zoneAreaPct = ((forbiddenCount + criticalCount) / cells.length * 100).toFixed(1);
+    $("statsGrid").innerHTML = `
+      <div class="stat"><span>吊脚楼总数</span><strong>${HOUSE_COUNT}</strong></div>
+      <div class="stat"><span>本轮迁移</span><strong>${state.lastPlanCount}</strong></div>
+      <div class="stat"><span>${state.hasPlanned ? "仍不满足" : "低分潜在迁移户"}</span><strong style="color:${unsatisfied ? "var(--warn)" : "var(--good)"}">${unsatisfied}</strong></div>
+      <div class="stat"><span>动画中</span><strong style="color:${moving ? "var(--accent)" : "var(--good)"}">${moving}</strong></div>
+      <div class="stat"><span>禁建栅格</span><strong style="color:var(--bad)">${forbiddenCount}</strong></div>
+      <div class="stat"><span>临界栅格</span><strong style="color:var(--warn)">${criticalCount}</strong></div>
+      <div class="stat" style="grid-column:1/-1"><span>限制地形覆盖</span><strong>${zoneAreaPct}%</strong></div>
+    `;
+  }
+
+  function setStatus(kind, text) {
+    const el = $("statusPill");
+    el.textContent = text;
+    el.className = "pill " + (kind === "busy" ? "busy" : kind === "locked" ? "locked" : "");
+  }
+
+  // ---------------------------------------------------------------------------
+  // 相机飞行 / 复位
+  // ---------------------------------------------------------------------------
+  function flyTo(x, y, scale = 1.45) {
+    state.cameraTween = {
+      now: 0, duration: 680,
+      fx: viewport.center.x, fy: viewport.center.y,
+      fs: viewport.scale.x,
+      tx: x, ty: y, ts: scale
+    };
+  }
+
+  function fitAll() {
+    state.cameraTween = null;
+    viewport.fitWorld(true);
+    viewport.moveCenter(WORLD_W / 2, WORLD_H / 2);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 事件绑定
+  // ---------------------------------------------------------------------------
+  function scheduleRelocation() {
+    window.clearTimeout(state.relocateTimer);
+    if (state.criticalLock) return;
+    state.relocateTimer = window.setTimeout(() => planRelocations("slider"), 210);
+  }
+
+  function updateCriticalLock() {
+    const shouldLock = Math.abs(state.limits.slope - CRITICAL_SLOPE) < 0.001;
+    state.criticalLock = shouldLock;
+    $("stage").classList.toggle("critical", shouldLock);
+    $("criticalBanner").hidden = !shouldLock;
+    if (shouldLock) {
+      window.clearTimeout(state.relocateTimer);
+      setStatus("locked", "25° 临界锁定：楼群停住，边界闪烁");
+    } else {
+      setStatus("ready", "条件已更新");
+      scheduleRelocation();
+    }
+    renderDetail();
+  }
+
+  function onControlInput() {
+    syncStateFromControls();
+    updateControlLabels();
+    drawZones();
+    updateCompare();
+    renderDetail();
+    updateStats();
+
+    const nextLock = Math.abs(state.limits.slope - CRITICAL_SLOPE) < 0.001;
+    if (nextLock !== state.criticalLock || nextLock) {
+      updateCriticalLock();
+    }
+    if (!state.criticalLock) scheduleRelocation();
+  }
+
+  ["wSlope", "wAspect", "wWater", "wSun", "tSlope", "tWater", "tSun"].forEach(id => {
+    $(id).addEventListener("input", onControlInput);
+  });
+
+  document.querySelectorAll("[data-preset]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const preset = btn.dataset.preset;
+      const values = {
+        balanced: { slope: 25, aspect: 25, water: 25, sun: 25 },
+        sun: { slope: 16, aspect: 20, water: 20, sun: 100 },
+        water: { slope: 18, aspect: 10, water: 100, sun: 22 },
+        slope: { slope: 100, aspect: 12, water: 18, sun: 20 }
+      }[preset];
+      Object.entries(values).forEach(([k, v]) => {
+        state.weights[k] = v;
+        $("w" + k[0].toUpperCase() + k.slice(1)).value = v;
+      });
+      document.querySelectorAll("[data-preset]").forEach(b => b.classList.toggle("active", b === btn));
+      updateControlLabels();
+      updateCompare();
+      renderDetail();
+      planRelocations("preset:" + preset);
+    });
+  });
+
+  $("demoBtn").addEventListener("click", () => {
+    // 预置对照演示：先恢复北坡初始村落，再把日照权重推到最高，触发南迁波次。
+    $("resetBtn").click();
+    window.setTimeout(() => document.querySelector('[data-preset="sun"]').click(), 140);
+    window.setTimeout(() => {
+      flyTo((controlB.x + controlA.x) / 2, (controlB.y + controlA.y) / 2 + 20, 1.08);
+    }, 360);
+  });
+
+  $("resetBtn").addEventListener("click", () => {
+    $("wSlope").value = 25;
+    $("wAspect").value = 25;
+    $("wWater").value = 25;
+    $("wSun").value = 25;
+    $("tSlope").value = 33;
+    $("tWater").value = 420;
+    $("tSun").value = 2.8;
+    syncStateFromControls();
+    state.criticalLock = false;
+    state.hasPlanned = false;
+    state.lastPlanCount = 0;
+    document.querySelectorAll("[data-preset]").forEach(b =>
+      b.classList.toggle("active", b.dataset.preset === "balanced"));
+    $("stage").classList.remove("critical");
+    $("criticalBanner").hidden = true;
+    updateControlLabels();
+    drawZones();
+    initialPlacement();
+    fitAll();
+    setStatus("ready", "已恢复初始村落与均衡权重");
+  });
+
+  $("viewBtn").addEventListener("click", fitAll);
+  $("fitBtn").addEventListener("click", fitAll);
+  $("flyA").addEventListener("click", () => flyTo(controlA.x, controlA.y, 1.75));
+  $("flyB").addEventListener("click", () => flyTo(controlB.x, controlB.y, 1.75));
+  $("clearTrails").addEventListener("click", () => {
+    trails = [];
+    trailLayer.clear();
+  });
+
+  viewport.on("clicked", ({ world }) => {
+    let best = null, bestD = 28;
+    for (const h of houses) {
+      const d = Math.hypot(h.view.x - world.x, h.view.y - world.y);
+      if (d < bestD) { bestD = d; best = h; }
+    }
+    if (best) {
+      state.selectedId = best.id;
+      renderDetail();
+    } else {
+      state.selectedId = null;
+      renderDetail();
+    }
+  });
+
+  host.addEventListener("pointermove", (e) => {
+    const rect = app.view.getBoundingClientRect();
+    const world = viewport.toWorld(e.clientX - rect.left, e.clientY - rect.top);
+    let hover = false;
+    for (const h of houses) {
+      if (Math.hypot(h.view.x - world.x, h.view.y - world.y) < 24) { hover = true; break; }
+    }
+    app.view.style.cursor = hover ? "pointer" : (e.buttons ? "grabbing" : "grab");
+  });
+
+  // ---------------------------------------------------------------------------
+  // 帧循环：迁移补间、锁定、选中框与标记脉冲
+  // ---------------------------------------------------------------------------
+  function drawSelection() {
+    selectionLayer.clear();
+    if (state.selectedId === null) return;
+    const h = houses[state.selectedId];
+    if (!h || h.c < 0) return;
+    selectionLayer.lineStyle({ width: 2, color: 0x38bdf8, alpha: 0.95 });
+    const pulse = 22 + Math.sin(state.now / 180) * 2.5;
+    selectionLayer.drawRoundedRect(h.view.x - pulse, h.view.y - 15, pulse * 2, 30, 8);
+    selectionLayer.lineStyle({ width: 5, color: 0x38bdf8, alpha: 0.16 });
+    selectionLayer.drawRoundedRect(h.view.x - pulse - 3, h.view.y - 18, (pulse + 3) * 2, 36, 11);
+  }
+
+  app.ticker.add((ticker) => {
+    const dt = Math.min(ticker.deltaMS || 16.7, 50);
+    state.now += dt;
+
+    // 相机补间
+    if (state.cameraTween) {
+      const ct = state.cameraTween;
+      ct.now += dt;
+      const t = clamp(ct.now / ct.duration, 0, 1);
+      const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      viewport.scale.set(lerp(ct.fs, ct.ts, e));
+      viewport.moveCenter(lerp(ct.fx, ct.tx, e), lerp(ct.fy, ct.ty, e));
+      if (t >= 1) state.cameraTween = null;
+    }
+
+    // 临界边界闪烁；楼群补间在 criticalLock 时不累积 elapsed。
+    if (state.criticalLock) {
+      const pulse = 0.38 + 0.62 * Math.abs(Math.sin(state.now / 145));
+      boundaryGraphics.alpha = pulse;
+    } else {
+      boundaryGraphics.alpha = 0.92;
+    }
+
+    let movingCount = 0;
+    for (const h of houses) {
+      if (!h.move) continue;
+      if (!state.criticalLock) h.move.elapsed += dt;
+      const m = h.move;
+      const raw = clamp((m.elapsed - m.delay) / m.duration, 0, 1);
+      const e = raw < 0.5 ? 4 * raw * raw * raw : 1 - Math.pow(-2 * raw + 2, 3) / 2;
+      const p = clamp(e, 0, 1);
+      const pos = quadPoint(
+        { x: m.fromX, y: m.fromY },
+        { x: m.cx, y: m.cy },
+        { x: m.toX, y: m.toY },
+        p
+      );
+      h.view.x = pos.x;
+      h.view.y = pos.y;
+      const lift = Math.sin(p * Math.PI) * 1.08;
+      h.view.scale.set(1 + lift * 0.08);
+
+      if (raw > 0 && raw < 1) movingCount++;
+      if (raw >= 1) {
+        h.view.x = m.toX;
+        h.view.y = m.toY;
+        h.view.scale.set(1);
+        h.move = null;
+        if (state.selectedId === h.id) renderDetail();
+      }
+    }
+
+    // 轨迹整体透明度随运动状态变化。
+    trailLayer.alpha = movingCount ? 0.92 : 0.58;
+
+    for (const ring of pulseRings) {
+      const p = ((state.now / 1400) + ring.offset) % 1;
+      ring.graphic.scale.set(0.75 + p * 0.75);
+      ring.graphic.alpha = (1 - p) * 0.75;
+    }
+
+    drawSelection();
+
+    state.statsTimer += dt;
+    if (state.statsTimer > 420) {
+      state.statsTimer = 0;
+      updateStats();
+      if (state.selectedId !== null) {
+        const badge = $("selectedBadge");
+        const h = houses[state.selectedId];
+        if (h && h.move && !state.criticalLock && badge.textContent !== "迁移中") renderDetail();
+      }
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // 启动
+  // ---------------------------------------------------------------------------
+  syncStateFromControls();
+  updateControlLabels();
+  drawZones();
+  initialPlacement();
+  updateCompare();
+  updateStats();
+  setStatus("ready", "可缩放场地已就绪 · 均衡权重");
+
+  // 暴露少量调试句柄，便于控制台核查栅格与落位。
+  window.__siteLab = {
+    state, cells, houses, controlA, controlB, viewport, app,
+    planRelocations,
+    get trails() { return trails; }
+  };
+})();
+</script>
+</body>
+</html>
