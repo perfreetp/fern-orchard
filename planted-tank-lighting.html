@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>水草缸俯视光照演示</title>
+<style>
+  :root{
+    --bg:#0e1712; --panel:#16241c; --panel2:#1d3126; --line:#2c4638;
+    --fg:#e6f0e9; --muted:#93b0a0; --accent:#e8b34b; --accent2:#7fd1a8;
+    --warn:#e08a6f;
+  }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+    --bg:#0b120e; --panel:#131f18; --panel2:#1a2b21; --line:#284033;
+    --fg:#e6f0e9; --muted:#8fad9d;
+  }}
+  :root[data-theme="light"]{
+    --bg:#eef3ef; --panel:#ffffff; --panel2:#f2f7f3; --line:#cfded4;
+    --fg:#1d2c23; --muted:#5d7568; --accent:#b97a1e; --accent2:#2e8f63;
+    --warn:#b6502f; color-scheme: light;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:14px/1.55 "Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    padding:18px max(16px,env(safe-area-inset-left)) 26px max(16px,env(safe-area-inset-right));
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+  header h1{font-size:20px;margin:0 0 4px;font-weight:650;letter-spacing:.5px}
+  header p{margin:0 0 14px;color:var(--muted);font-size:13px}
+  .layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+  @media (max-width:900px){ .layout{grid-template-columns:1fr} }
+  .stage{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:12px; min-width:0;
+  }
+  canvas{width:100%;height:auto;display:block;border-radius:10px;touch-action:none;cursor:grab}
+  canvas.dragging{cursor:grabbing}
+  .controls{display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .card h2{font-size:13px;margin:0 0 10px;color:var(--accent2);font-weight:650;letter-spacing:.5px;text-transform:uppercase}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:9px 0}
+  .row label{color:var(--muted);font-size:13px}
+  .val{font-variant-numeric:tabular-nums;font-weight:600}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  button{
+    background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+    border-radius:9px;padding:8px 12px;font-size:13px;cursor:pointer;width:100%;
+  }
+  button:hover{border-color:var(--accent2)}
+  .btnrow{display:flex;gap:8px}
+  .lamp-state{display:inline-flex;align-items:center;gap:6px;font-weight:650}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+  .dot.on{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+  .dot.off{background:var(--warn)}
+  .zone-stat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px;margin:8px 0}
+  .zone-stat .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .zone-name{font-weight:650;display:flex;align-items:center;gap:7px}
+  .swatch{width:13px;height:13px;border-radius:4px;border:1px solid rgba(0,0,0,.25)}
+  .bar{height:7px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:7px}
+  .bar > i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#3d7a55,#9ed8ae,#f2d98a)}
+  .src{font-size:12px;color:var(--muted);margin-top:5px}
+  .src b{color:var(--fg);font-weight:600}
+  .legend{font-size:12px;color:var(--muted);line-height:1.7}
+  .legend kbd{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:11px}
+  .time-track-wrap{margin-top:10px}
+  .time-marks{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px}
+  .hint{font-size:12px;color:var(--muted);background:var(--panel2);border-left:3px solid var(--accent);
+    border-radius:0 8px 8px 0;padding:8px 10px;margin-top:10px}
+  .golden{color:var(--accent);font-weight:600}
+  .small{font-size:11.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>水草缸俯视光照演示</h1>
+    <p>顶视投影模型 · 轮廓阴影近似（非逐像素遮挡）· 水面波纹使投影边缘轻微抖动 · 分区按<span class="golden">黄金分割 0.382 / 0.618</span>布置</p>
+  </header>
+
+  <div class="layout">
+    <div class="stage">
+      <canvas id="cv" width="960" height="640" aria-label="水草缸俯视画布"></canvas>
+      <div class="hint">
+        拖动缸内<span style="color:var(--accent)">金色灯盘</span>改变水平位置，用右侧<b>灯高</b>滑杆或滚轮改变高度；
+        拖动<b>时间轴</b>或点<b>播放</b>，观察 7:00→18:00 灯位扫过沉木时 A、B 两区光强此消彼长。
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="card">
+        <h2>灯具</h2>
+        <div class="row">
+          <label>状态</label>
+          <span class="lamp-state"><span id="lampDot" class="dot on"></span><span id="lampStateTxt">开灯</span></span>
+        </div>
+        <div class="row"><label>水平位置 x</label><span class="val" id="posX">200</span></div>
+        <div class="row"><label>水平位置 y</label><span class="val" id="posY">75</span></div>
+        <div class="row"><label>灯高 h（离水面）</label><span class="val" id="posH">130</span></div>
+        <input type="range" id="hSlider" min="90" max="460" step="1" value="130" aria-label="灯高">
+        <div class="small" style="margin-top:6px">灯越高 → 投影系数 h物/h灯 越小 → 阴影越短、遮挡越弱</div>
+      </div>
+
+      <div class="card">
+        <h2>一天时间轴</h2>
+        <div class="row"><label>当前时刻</label><span class="val" id="timeTxt">07:00</span></div>
+        <input type="range" id="timeSlider" min="0" max="24" step="0.05" value="7" aria-label="时间">
+        <div class="time-marks"><span>0:00</span><span>开灯 7:00</span><span>12:30</span><span>关灯 18:00</span><span>24:00</span></div>
+        <div class="btnrow" style="margin-top:10px">
+          <button id="playBtn">▶ 播放一天</button>
+          <button id="resetBtn">重置灯位</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>分区实时光强</h2>
+        <div id="zoneStats"></div>
+      </div>
+
+      <div class="card">
+        <h2>读图说明</h2>
+        <div class="legend">
+          · 色块越亮 = 直射光越强；遮荫处压暗，保留少量环境光<br>
+          · 半透明深色块 = 沉木/石块的轮廓投影，边缘随水波抖动<br>
+          · 虚线圆 = 灯在水面的位置与照射范围<br>
+          · 遮荫来源方向 = 从分区中心指向造成遮挡的物体<br>
+          · 手动把灯移到缸的<b>北侧/南侧</b>，对比 A、B 两块相邻分区
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ============ 逻辑坐标系（960×640，俯视：x 向东，y 向南） ============ */
+const W = 960, H = 640;
+const TAU = Math.PI * 2;
+
+/* ---- 黄金分割分区：左列宽≈0.382，列内再按 0.618/0.382 横切 ---- */
+const zones = [
+  { name:'A', hue:142, poly:[[48,48],[350,48],[350,263],[48,263]] },
+  { name:'B', hue:158, poly:[[48,283],[350,283],[350,592],[48,592]] },
+  { name:'C', hue:118, poly:[[370,48],[912,48],[912,592],[370,592]] },
+];
+
+/* ---- 沉木（横卧 A/B 分界）---- */
+const WOOD = { cx:200, cy:273, a:140, b:48, rot:-6*Math.PI/180, height:120 };
+function makeDriftwood(){
+  const {cx,cy,a,b,rot}=WOOD, n=13, poly=[];
+  for(let i=0;i<n;i++){
+    const t=i/n*TAU;
+    const w=1+0.12*Math.sin(t*3+0.6)+0.07*Math.cos(t*5);
+    const sx=Math.cos(t)*a*w, sy=Math.sin(t)*b*w;
+    poly.push([cx+sx*Math.cos(rot)-sy*Math.sin(rot), cy+sx*Math.sin(rot)+sy*Math.cos(rot)]);
+  }
+  return { name:'沉木', poly, height:WOOD.height, kind:'wood' };
+}
+/* ---- 石块 ---- */
+function makeRock(name,cx,cy,r,height,seed){
+  const n=11, poly=[];
+  for(let i=0;i<n;i++){
+    const a=i/n*TAU;
+    const w=1+0.18*Math.sin(a*3+seed)+0.1*Math.cos(a*5+seed*1.7);
+    poly.push([cx+r*w*Math.cos(a), cy+r*w*Math.sin(a)]);
+  }
+  return { name, poly, height, kind:'rock', seed };
+}
+const occluders = [
+  makeDriftwood(),
+  makeRock('石块1',560,250,64,78,1.3),
+  makeRock('石块2',720,460,46,58,2.7),
+  makeRock('石块3',850,170,30,40,4.1),
+];
+
+/* ---- 灯的时间关键帧（7:00–18:00 开灯；正午灯最高、阴影最短）---- */
+const KEYS = [
+  { t:7,    x:200, y:75,  h:130 },
+  { t:12.5, x:200, y:273, h:420 },
+  { t:18,   x:200, y:385, h:130 },
+];
+const AMBIENT = 0.06;            // 环境光底
+const SAMPLE_STEP = 16;
+
+/* ============ 状态 ============ */
+const state = {
+  lamp:{ x:200, y:75, h:130 },
+  lampOn:true,
+  time:7,
+  playing:false,
+  manualDrag:false,
+  wavePhase:0,
+};
+
+/* ============ 几何工具 ============ */
+function pointInPoly(x,y,poly){
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const [xi,yi]=poly[i],[xj,yj]=poly[j];
+    if((yi>y)!==(yj>y) && x<((xj-xi)*(y-yi))/(yj-yi)+xi) inside=!inside;
+  }
+  return inside;
+}
+function polyCenter(poly){
+  let sx=0,sy=0; for(const [x,y] of poly){sx+=x;sy+=y;}
+  return [sx/poly.length, sy/poly.length];
+}
+/* 轮廓投影：每个顶点沿 灯→地 方向平移 k=物高/灯高；波纹给顶点加小幅抖动 */
+function shadowPoly(obj,lamp,phase){
+  const k=obj.height/lamp.h;
+  return obj.poly.map(([x,y],i)=>{
+    let bx=x+(x-lamp.x)*k, by=y+(y-lamp.y)*k;
+    if(phase!==null){
+      const j=2.2; // 波纹导致的投影边缘抖动幅度(px)
+      bx += j*Math.sin(by*0.045 + phase) + j*0.5*Math.sin(bx*0.03 - phase*0.7 + i);
+      by += j*Math.cos(bx*0.04 + phase*0.8) + j*0.5*Math.sin(by*0.025 + phase*1.1 + i*1.3);
+    }
+    return [bx,by];
+  });
+}
+/* 分区采样：直射光 = 1 - 被遮采样比例 */
+function zoneLight(zone,lamp,phase){
+  const xs=zone.poly.map(p=>p[0]), ys=zone.poly.map(p=>p[1]);
+  const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+  const shadows = occluders.map(o=>({o, sp:shadowPoly(o,lamp,phase)}));
+  let total=0, blocked=0; const hits={};
+  for(let x=minX+SAMPLE_STEP/2;x<maxX;x+=SAMPLE_STEP){
+    for(let y=minY+SAMPLE_STEP/2;y<maxY;y+=SAMPLE_STEP){
+      if(!pointInPoly(x,y,zone.poly)) continue;
+      total++;
+      for(const {o,sp} of shadows){
+        if(pointInPoly(x,y,sp)){ blocked++; hits[o.name]=(hits[o.name]||0)+1; break; }
+      }
+    }
+  }
+  const frac=total?blocked/total:0;
+  const intensity=AMBIENT+(1-AMBIENT)*(1-frac);
+  let main=null;
+  for(const [name,cnt] of Object.entries(hits)) if(!main||cnt>main.cnt) main={name,cnt};
+  return { intensity, frac, main:main?main.name:null };
+}
+const DIRS8=['东','东南','南','西南','西','西北','北','东北'];
+function dirName(dx,dy){
+  const ang=Math.atan2(dy,dx)*180/Math.PI;
+  return DIRS8[Math.round(((ang+360)%360)/45)%8];
+}
+function shadeSource(obj,zone){
+  const [zx,zy]=polyCenter(zone.poly), [ox,oy]=polyCenter(obj.poly);
+  return dirName(ox-zx, oy-zy);
+}
+function lampAt(time){
+  if(time<KEYS[0].t || time>KEYS[KEYS.length-1].t) return null;
+  for(let i=0;i<KEYS.length-1;i++){
+    const a=KEYS[i],b=KEYS[i+1];
+    if(time>=a.t && time<=b.t){
+      const f=(time-a.t)/(b.t-a.t);
+      return { x:a.x+(b.x-a.x)*f, y:a.y+(b.y-a.y)*f, h:a.h+(b.h-a.h)*f };
+    }
+  }
+  return null;
+}
+
+/* ============ 渲染 ============ */
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+function pathPoly(poly){ ctx.beginPath(); ctx.moveTo(poly[0][0],poly[0][1]); for(let i=1;i<poly.length;i++) ctx.lineTo(poly[i][0],poly[i][1]); ctx.closePath(); }
+
+/* 水草颜色：同一色相，明度随光强变化 */
+function zoneColor(zone,intensity,on){
+  const L = on ? (20 + intensity*46) : 12;           // 暗部保留环境光
+  const S = on ? (38 + intensity*30) : 18;
+  return `hsl(${zone.hue} ${S}% ${L}%)`;
+}
+function zoneEdge(zone){ return `hsl(${zone.hue} 45% 62% / .55)`; }
+
+function draw(now){
+  ctx.clearRect(0,0,W,H);
+  const on=state.lampOn;
+  const phase=state.wavePhase;
+
+  /* 缸外背景 */
+  ctx.fillStyle='#0a120d'; ctx.fillRect(0,0,W,H);
+
+  /* 缸体玻璃底 + 底床 */
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#3a2f22'); grad.addColorStop(1,'#241c13');
+  ctx.fillStyle=grad; roundRect(14,14,W-28,H-28,18); ctx.fill();
+
+  /* 底床颗粒纹理（静态伪随机） */
+  ctx.save(); roundRect(14,14,W-28,H-28,18); ctx.clip();
+  for(let i=0;i<260;i++){
+    const px=((i*137.5)% (W-40))+20, py=((i*89.3)% (H-40))+20;
+    ctx.fillStyle = i%3===0 ? 'rgba(0,0,0,.10)':'rgba(255,235,200,.05)';
+    ctx.fillRect(px,py,2.2,2.2);
+  }
+  ctx.restore();
+
+  /* 以下光照→波纹全部裁剪在缸体圆角内 */
+  ctx.save(); roundRect(14,14,W-28,H-28,18); ctx.clip();
+
+  /* 灯的直射光斑（径向渐变），夜间不画 */
+  if(on){
+    const {x,y,h}=state.lamp;
+    const radius=150+h*0.55;
+    const rg=ctx.createRadialGradient(x,y,8,x,y,radius);
+    rg.addColorStop(0,'rgba(255,238,180,.28)');
+    rg.addColorStop(.55,'rgba(255,225,150,.10)');
+    rg.addColorStop(1,'rgba(255,225,150,0)');
+    ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(x,y,radius,0,TAU); ctx.fill();
+  }
+
+  /* 水草分区色块（先算光强再上色） */
+  const metrics=[];
+  for(const z of zones){
+    const m = on ? zoneLight(z,state.lamp,phase) : {intensity:AMBIENT,frac:1-AMBIENT,main:null};
+    metrics.push(m);
+    pathPoly(z.poly);
+    ctx.fillStyle=zoneColor(z,m.intensity,on);
+    ctx.fill();
+    ctx.lineWidth=1.5; ctx.strokeStyle=zoneEdge(z); ctx.stroke();
+    drawPlants(z,m.intensity,on);
+  }
+
+  /* 黄金分割辅助线（淡） */
+  ctx.save(); ctx.setLineDash([6,7]); ctx.strokeStyle='rgba(232,179,75,.35)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(360,20); ctx.lineTo(360,H-20); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(30,273); ctx.lineTo(368,273); ctx.stroke();
+  ctx.restore();
+
+  /* 阴影层（轮廓投影 + 波纹抖动），夜间不画 */
+  if(on){
+    for(const o of occluders){
+      const sp=shadowPoly(o,state.lamp,phase);
+      pathPoly(sp);
+      ctx.fillStyle='rgba(8,14,10,.42)';
+      ctx.fill();
+      ctx.strokeStyle='rgba(6,10,8,.28)'; ctx.lineWidth=1; ctx.stroke();
+    }
+  }
+
+  /* 沉木 */
+  const wood=occluders[0];
+  pathPoly(wood.poly);
+  const wg=ctx.createLinearGradient(120,230,290,320);
+  wg.addColorStop(0,'#6b4a2e'); wg.addColorStop(.5,'#4e3520'); wg.addColorStop(1,'#372516');
+  ctx.fillStyle=wg; ctx.fill();
+  ctx.strokeStyle='#24170d'; ctx.lineWidth=2; ctx.stroke();
+  /* 木纹 */
+  ctx.save(); pathPoly(wood.poly); ctx.clip();
+  ctx.strokeStyle='rgba(20,12,6,.5)'; ctx.lineWidth=2;
+  for(let i=0;i<5;i++){
+    ctx.beginPath();
+    const yy=250+i*12;
+    ctx.moveTo(110,yy);
+    ctx.bezierCurveTo(170,yy-10,240,yy+12,295,yy-4);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  /* 石块 */
+  for(let k=1;k<occluders.length;k++){
+    const r=occluders[k];
+    pathPoly(r.poly);
+    const [rcx,rcy]=polyCenter(r.poly);
+    const rg2=ctx.createRadialGradient(rcx-12,rcy-12,6,rcx,rcy,70);
+    rg2.addColorStop(0,'#9aa6a2'); rg2.addColorStop(.6,'#6c7873'); rg2.addColorStop(1,'#46504c');
+    ctx.fillStyle=rg2; ctx.fill();
+    ctx.strokeStyle='#312a22'; ctx.lineWidth=1.5; ctx.stroke();
+  }
+
+  /* 水面波纹：缓慢起伏的等高亮带 */
+  ctx.save(); roundRect(14,14,W-28,H-28,18); ctx.clip();
+  ctx.globalAlpha=.5;
+  for(let band=0;band<5;band++){
+    ctx.beginPath();
+    const baseY=90+band*120;
+    for(let x=14;x<=W-14;x+=12){
+      const y=baseY + Math.sin(x*0.012 + phase*0.9 + band*1.7)*7
+                   + Math.sin(x*0.031 - phase*0.5 + band)*3;
+      x===14?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle=`rgba(180,225,235,${0.05+band*0.012})`;
+    ctx.lineWidth=1.4; ctx.stroke();
+  }
+  ctx.restore();           // 结束波纹自身裁剪
+  ctx.restore();           // 结束缸体大裁剪（灯光/分区/阴影/波纹均在缸内）
+
+  /* 灯：水面投影位置（虚线圆）+ 灯盘本体 */
+  const lamp=state.lamp;
+  ctx.save();
+  ctx.setLineDash([5,5]);
+  ctx.strokeStyle=on?'rgba(232,179,75,.8)':'rgba(160,160,160,.5)';
+  ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(lamp.x,lamp.y,16,0,TAU); ctx.stroke();
+  ctx.setLineDash([]);
+  /* 灯盘 */
+  ctx.beginPath(); ctx.arc(lamp.x,lamp.y,11,0,TAU);
+  ctx.fillStyle=on?'#f4c766':'#8a8f8c';
+  ctx.shadowColor=on?'rgba(244,199,102,.9)':'transparent'; ctx.shadowBlur=on?18:0;
+  ctx.fill(); ctx.shadowBlur=0;
+  ctx.strokeStyle='#2a1f10'; ctx.lineWidth=1.5; ctx.stroke();
+  /* 灯高示意小竖线 + h 文字 */
+  ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(lamp.x,lamp.y-16); ctx.lineTo(lamp.x,lamp.y-30); ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,.85)'; ctx.font='11px sans-serif';
+  ctx.fillText('h='+Math.round(lamp.h), lamp.x+16, lamp.y-22);
+  ctx.restore();
+
+  /* 缸框 */
+  roundRect(14,14,W-28,H-28,18);
+  ctx.strokeStyle='rgba(220,240,228,.25)'; ctx.lineWidth=2; ctx.stroke();
+
+  /* 分区标签 */
+  ctx.font='bold 15px sans-serif'; ctx.textBaseline='middle';
+  zones.forEach((z,i)=>{
+    const [cx,cy]=polyCenter(z.poly);
+    const m=metrics[i];
+    ctx.fillStyle='rgba(10,20,14,.72)';
+    roundRect(cx-26,cy-16,52,32,8); ctx.fill();
+    ctx.fillStyle='#eef7f0'; ctx.textAlign='center';
+    ctx.fillText(z.name,cx,cy-5);
+    ctx.font='11px sans-serif'; ctx.fillStyle='#cfe6d8';
+    ctx.fillText(Math.round(m.intensity*100)+'%',cx,cy+9);
+    ctx.font='bold 15px sans-serif';
+  });
+  ctx.textAlign='left';
+
+  return metrics;
+}
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+/* 水草：在分区内画若干小草簇，数量/明度随光强 */
+function drawPlants(zone,intensity,on){
+  const [minX,minY,maxX,maxY]=zone.poly.reduce((a,p)=>
+    [Math.min(a[0],p[0]),Math.min(a[1],p[1]),Math.max(a[2],p[0]),Math.max(a[3],p[1])],[1e9,1e9,-1e9,-1e9]);
+  const count=Math.round(10+intensity*22);
+  ctx.save();
+  ctx.strokeStyle=`hsl(${zone.hue} 45% ${on?30+intensity*35:14}% / .8)`;
+  ctx.lineWidth=1.4; ctx.lineCap='round';
+  for(let i=0;i<count;i++){
+    const px=minX+14+((i*53.7)%(maxX-minX-28));
+    const py=minY+14+((i*37.3)%(maxY-minY-28));
+    if(!pointInPoly(px,py,zone.poly)) continue;
+    const hgt=5+intensity*7;
+    ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px-2,py-hgt); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px+2.5,py-hgt*0.8); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ============ 侧栏读数 ============ */
+const statsEl=document.getElementById('zoneStats');
+const statNodes=zones.map(z=>{
+  const div=document.createElement('div'); div.className='zone-stat';
+  div.innerHTML=`<div class="top"><span class="zone-name"><span class="swatch" style="background:hsl(${z.hue},55%,42%)"></span>分区 ${z.name}</span>
+    <span class="val" data-v></span></div>
+    <div class="bar"><i data-bar></i></div><div class="src" data-src></div>`;
+  statsEl.appendChild(div);
+  return { v:div.querySelector('[data-v]'), bar:div.querySelector('[data-bar]'), src:div.querySelector('[data-src]') };
+});
+function updatePanel(metrics){
+  zones.forEach((z,i)=>{
+    const m=metrics[i];
+    statNodes[i].v.textContent=Math.round(m.intensity*100)+'%';
+    statNodes[i].bar.style.width=Math.round(m.intensity*100)+'%';
+    if(!state.lampOn){
+      statNodes[i].src.innerHTML='灯具关闭 · 仅环境光';
+    } else if(m.main){
+      const obj=occluders.find(o=>o.name===m.main);
+      const dir=shadeSource(obj,z);
+      statNodes[i].src.innerHTML=`遮荫来源：<b>${m.main}</b>（方向 <b>${dir}</b>）· 遮挡 ${Math.round(m.frac*100)}%`;
+    } else {
+      statNodes[i].src.innerHTML='无遮挡 · 直射光充足';
+    }
+  });
+  document.getElementById('posX').textContent=Math.round(state.lamp.x);
+  document.getElementById('posY').textContent=Math.round(state.lamp.y);
+  document.getElementById('posH').textContent=Math.round(state.lamp.h);
+  document.getElementById('hSlider').value=Math.round(state.lamp.h);
+  const hh=Math.floor(state.time), mm=Math.round((state.time-hh)*60);
+  document.getElementById('timeTxt').textContent=String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+  document.getElementById('timeSlider').value=state.time;
+  const dot=document.getElementById('lampDot');
+  dot.className='dot '+(state.lampOn?'on':'off');
+  document.getElementById('lampStateTxt').textContent=state.lampOn?'开灯':'关灯（夜间）';
+}
+
+/* ============ 交互 ============ */
+function evtPos(e){
+  const r=cv.getBoundingClientRect();
+  const cx=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+  const cy=(e.touches?e.touches[0].clientY:e.clientY)-r.top;
+  return [cx*(W/r.width), cy*(H/r.height)];
+}
+function nearLamp(px,py){ return Math.hypot(px-state.lamp.x,py-state.lamp.y)<26; }
+let dragging=false;
+cv.addEventListener('pointerdown',e=>{
+  const [px,py]=evtPos(e);
+  if(nearLamp(px,py)){ dragging=true; state.manualDrag=true; cv.classList.add('dragging'); cv.setPointerCapture(e.pointerId); }
+});
+cv.addEventListener('pointermove',e=>{
+  const [px,py]=evtPos(e);
+  cv.style.cursor=nearLamp(px,py)||dragging?'grabbing':'grab';
+  if(!dragging) return;
+  state.lamp.x=Math.max(24,Math.min(W-24,px));
+  state.lamp.y=Math.max(24,Math.min(H-24,py));
+});
+function endDrag(){ dragging=false; cv.classList.remove('dragging'); }
+cv.addEventListener('pointerup',endDrag);
+cv.addEventListener('pointercancel',endDrag);
+cv.addEventListener('wheel',e=>{
+  e.preventDefault();
+  state.lamp.h=Math.max(90,Math.min(460,state.lamp.h-Math.sign(e.deltaY)*14));
+  state.manualDrag=true;
+},{passive:false});
+
+document.getElementById('hSlider').addEventListener('input',e=>{
+  state.lamp.h=+e.target.value; state.manualDrag=true;
+});
+const timeSlider=document.getElementById('timeSlider');
+timeSlider.addEventListener('input',e=>{
+  state.time=+e.target.value; state.manualDrag=false; applyTime();
+});
+function applyTime(){
+  const lp=lampAt(state.time);
+  if(lp){ state.lamp=lp; state.lampOn=true; }
+  else { state.lampOn=false; }
+}
+document.getElementById('playBtn').addEventListener('click',e=>{
+  state.playing=!state.playing; state.manualDrag=false;
+  e.target.textContent=state.playing?'⏸ 暂停':'▶ 播放一天';
+  if(state.playing && (state.time>=18||state.time<7)) state.time=7;
+});
+document.getElementById('resetBtn').addEventListener('click',()=>{
+  state.time=7; state.manualDrag=false; applyTime(); state.playing=false;
+  document.getElementById('playBtn').textContent='▶ 播放一天';
+});
+
+/* ============ 主循环 ============ */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(0.05,(now-last)/1000); last=now;
+  state.wavePhase += dt*1.1;                 // 缓慢波纹
+  if(state.playing){
+    state.time += dt*2.2;                    // 一天约 11 秒播完
+    if(state.time>=24){ state.time=24; state.playing=false;
+      document.getElementById('playBtn').textContent='▶ 播放一天'; }
+    applyTime();
+  }
+  const metrics=draw(now);
+  updatePanel(metrics);
+  requestAnimationFrame(frame);
+}
+/* 支持 #t=18 深链，直接定位到某一时刻（便于演示/截图） */
+const hashT = parseFloat(((location.hash.match(/#t=([\d.]+)/)||[])[1]));
+if(!isNaN(hashT)){ state.time = Math.max(0, Math.min(24, hashT)); state.manualDrag=false; }
+applyTime();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
