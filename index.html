@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>中庭天窗日光模拟 · Babylon.js</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: rgba(17, 22, 30, 0.88); --line: #2a3340;
+    --fg: #e6edf3; --dim: #9aa7b4; --accent: #f0b429; --accent2: #4da3ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg);
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; color: var(--fg); }
+  #renderCanvas { width: 100vw; height: 100vh; touch-action: none; outline: none; }
+
+  #panel {
+    position: fixed; top: 14px; left: 14px; width: 330px; max-width: calc(100vw - 28px);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; backdrop-filter: blur(8px); z-index: 10;
+    box-shadow: 0 8px 30px rgba(0,0,0,.45);
+  }
+  #panel h1 { font-size: 15px; margin: 0 0 10px; font-weight: 600; letter-spacing: .5px; }
+  .row { margin: 11px 0; }
+  .row label { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--dim); margin-bottom: 5px; }
+  .row label b { color: var(--fg); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+  .btns { display: flex; gap: 7px; flex-wrap: wrap; }
+  button {
+    flex: 1 1 auto; min-width: 64px; padding: 7px 9px; font-size: 12.5px; cursor: pointer;
+    background: #1c2530; color: var(--fg); border: 1px solid var(--line); border-radius: 8px;
+    transition: background .15s, border-color .15s;
+  }
+  button:hover { background: #26313f; border-color: var(--accent2); }
+  button.primary { border-color: var(--accent); color: var(--accent); }
+  #hud {
+    margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line);
+    font-size: 12px; line-height: 1.75; color: var(--dim);
+  }
+  #hud b { color: var(--accent2); font-weight: 600; }
+  .hint { margin-top: 10px; font-size: 11.5px; color: #6e7d8c; line-height: 1.6;
+    background: rgba(77,163,255,.08); border-left: 2px solid var(--accent2); padding: 7px 9px; border-radius: 0 6px 6px 0; }
+  .legend { display: flex; gap: 14px; margin-top: 8px; font-size: 11.5px; color: var(--dim); }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  .dot.d { background: #ffd16b; } .dot.r { background: #ff8c40; }
+  @media (max-width: 560px) { #panel { width: calc(100vw - 20px); top: 10px; left: 10px; padding: 11px 12px; } }
+</style>
+</head>
+<body>
+<canvas id="renderCanvas"></canvas>
+
+<div id="panel">
+  <h1>☀ 中庭天窗 · 日光光斑模拟</h1>
+
+  <div class="row">
+    <label>时间轴（太阳方位 / 高度）<b id="tVal">12.0 时</b></label>
+    <input id="time" type="range" min="8" max="18" step="0.1" value="12">
+    <div class="btns" style="margin-top:6px">
+      <button id="btnNoon" class="primary">预置·正午</button>
+      <button id="btnDusk" class="primary">预置·傍晚</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <label>天窗叶片开合角度 <b id="aVal">60°</b></label>
+    <input id="angle" type="range" min="0" max="90" step="1" value="60">
+    <div class="btns" style="margin-top:6px">
+      <button id="btnClose">闭合 0°</button>
+      <button id="btnOpen">全开 90°</button>
+    </div>
+  </div>
+
+  <div id="hud"></div>
+
+  <div class="legend">
+    <span><span class="dot d"></span>直射光斑（金黄）</span>
+    <span><span class="dot r"></span>镜面反射光斑（橙）</span>
+  </div>
+
+  <div class="hint">
+    鼠标拖拽旋转视角、滚轮缩放。<b style="color:var(--accent2)">点击东西幕墙的任意玻璃面板</b>可将其切换为镜面（再点恢复）；
+    镜面把光斑折向对面墙。拖时间轴看光斑从地面爬到墙顶，调叶片角看光束被切割、条状光斑整体偏移。
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babylonjs/7.34.1/babylon.min.js"></script>
+<script src="src/geometry.js"></script>
+<script src="src/scene.js"></script>
+<script>
+  // 滑块数值联动
+  var t = document.getElementById('time'), a = document.getElementById('angle');
+  t.addEventListener('input', function () { document.getElementById('tVal').textContent = parseFloat(t.value).toFixed(1) + ' 时'; });
+  a.addEventListener('input', function () { document.getElementById('aVal').textContent = a.value + '°'; });
+</script>
+</body>
+</html>

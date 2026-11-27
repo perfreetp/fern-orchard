@@ -1,0 +1,12 @@
+{
+  "name": "atrium-skylight-sun",
+  "version": "1.0.0",
+  "description": "中庭天窗叶片阵列日光光斑交互模拟（Babylon.js）",
+  "private": true,
+  "scripts": {
+    "start": "node test/server.js",
+    "test": "node test/geo.test.js && node test/scene.headless.js"
+  },
+  "keywords": ["babylonjs", "sunlight", "louver", "fresnel", "atrium"],
+  "license": "MIT"
+}
