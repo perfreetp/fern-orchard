@@ -16,3 +16,7 @@ node_modules/
 __pycache__/
 .venv/
 venv/
+
+# build scratch & test artefacts
+.work/
+node_modules/
