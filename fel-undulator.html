@@ -1,0 +1,370 @@
+<title>FEL 波荡器剖面</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  :root{
+    --bg:#f4f5f7; --panel:#ffffff; --fg:#1d2330; --muted:#5c6675;
+    --line:#d8dde5; --accent:#2563eb; --accent2:#d97706;
+    --ok:#15803d; --warn:#b45309; --danger:#dc2626;
+    --canvas:#eef1f6; --nface:#d95043; --sface:#3f6fb5;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14171d; --panel:#1c212b; --fg:#e6eaf2; --muted:#9aa5b5;
+      --line:#2c3340; --accent:#5b8def; --accent2:#f0a832;
+      --ok:#4ade80; --warn:#fbbf24; --danger:#f87171;
+      --canvas:#171b23; --nface:#e06558; --sface:#5b84d6;
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14171d; --panel:#1c212b; --fg:#e6eaf2; --muted:#9aa5b5;
+    --line:#2c3340; --accent:#5b8def; --accent2:#f0a832;
+    --ok:#4ade80; --warn:#fbbf24; --danger:#f87171;
+    --canvas:#171b23; --nface:#e06558; --sface:#5b84d6;
+    color-scheme:dark;
+  }
+  body{ background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+  .wrap{ max-width:1220px; margin:0 auto; padding-block:14px;
+    padding-left:max(16px, env(safe-area-inset-left, 0px));
+    padding-right:max(16px, env(safe-area-inset-right, 0px)); }
+  h1{ font-size:19px; margin:0 0 2px; }
+  .sub{ color:var(--muted); font-size:12.5px; margin-bottom:12px; }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:12px; }
+  .controls{ display:flex; flex-wrap:wrap; gap:14px 22px; align-items:flex-end; }
+  .ctl{ display:flex; flex-direction:column; gap:4px; min-width:200px; flex:1; }
+  .ctl label{ font-size:12.5px; color:var(--muted); display:flex; justify-content:space-between; gap:8px; }
+  .ctl label b{ color:var(--fg); font-variant-numeric:tabular-nums; }
+  input[type=range]{ width:100%; accent-color:var(--accent); }
+  .btns{ display:flex; gap:8px; flex-wrap:wrap; }
+  button{ font:inherit; font-size:13px; padding:7px 14px; border-radius:7px; border:1px solid var(--line);
+    background:var(--panel); color:var(--fg); cursor:pointer; }
+  button:hover{ border-color:var(--accent); }
+  button.primary{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.warn{ background:var(--accent2); border-color:var(--accent2); color:#fff; }
+  button:disabled{ opacity:.45; cursor:not-allowed; }
+  .badge{ display:inline-block; font-size:12.5px; font-weight:600; padding:4px 12px; border-radius:99px; }
+  .badge.ok{ background:color-mix(in srgb,var(--ok) 15%,transparent); color:var(--ok); }
+  .badge.crit{ background:color-mix(in srgb,var(--warn) 18%,transparent); color:var(--warn); }
+  .badge.hit{ background:color-mix(in srgb,var(--danger) 15%,transparent); color:var(--danger); }
+  .reads{ display:grid; grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:8px; margin-top:10px; }
+  .read{ background:var(--canvas); border-radius:7px; padding:6px 9px; }
+  .read .k{ font-size:11px; color:var(--muted); }
+  .read .v{ font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .canvasScroll{ overflow-x:auto; }
+  canvas{ border-radius:8px; }
+  .cols{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:760px){ .cols{ grid-template-columns:1fr; } }
+  .panel h3{ margin:0 0 6px; font-size:13.5px; }
+  .panel .body{ font-size:12.5px; line-height:1.65; color:var(--fg); min-height:80px; }
+  .panel .body .muted{ color:var(--muted); }
+  .pill{ display:inline-block; padding:1px 8px; border-radius:99px; font-size:11.5px; font-weight:600; color:#fff; }
+  .pill.n{ background:var(--nface); } .pill.s{ background:var(--sface); }
+  #log{ font-family:ui-monospace,Consolas,monospace; font-size:11.5px; line-height:1.6; color:var(--muted);
+    max-height:120px; overflow-y:auto; }
+  #log div:first-child{ color:var(--fg); }
+  .legend{ font-size:11.5px; color:var(--muted); margin-top:8px; display:flex; gap:16px; flex-wrap:wrap; }
+  .sw{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+</style>
+
+<div class="wrap">
+  <h1>自由电子激光波荡器 · 二维侧视剖面</h1>
+  <div class="sub">上下两排磁极阵列相对布置，电子束沿轴线穿过。间隙 ↔ 振幅双向联动；相位改变即重算摆动周期。电子 γ = 30（教学演示参数，振幅经放大以便观察）。</div>
+
+  <div class="card">
+    <div class="controls">
+      <div class="ctl">
+        <label><span>间隙 g（拖动 ↔ 磁极开合）</span><b id="gapVal"></b></label>
+        <input type="range" id="gap" min="0.5" max="15" step="0.001" value="8">
+      </div>
+      <div class="ctl">
+        <label><span>磁极相位 φ（每块磁化转角）</span><b id="phiVal"></b></label>
+        <input type="range" id="phi" min="45" max="180" step="1" value="90">
+      </div>
+      <div class="btns">
+        <button class="warn" id="preset">⚡ 临界预置</button>
+        <button class="primary" id="step">单步 ▶ 一个周期</button>
+        <button id="reset">重置电子</button>
+        <span class="badge ok" id="status"></span>
+      </div>
+    </div>
+    <div class="reads" id="reads"></div>
+  </div>
+
+  <div class="card canvasScroll"><canvas id="c" width="1160" height="560"></canvas>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--nface)"></span>面向束流为 N 极</span>
+      <span><span class="sw" style="background:var(--sface)"></span>面向束流为 S 极</span>
+      <span><span class="sw" style="background:var(--accent)"></span>电子轨迹（红色段 = 侵入磁极）</span>
+      <span>◆ 橙色手柄：拖动振幅 → 间隙联动</span>
+      <span>点击任意磁极块查看极性与局部作用</span>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="card panel">
+      <h3>磁极详情</h3>
+      <div class="body" id="poleInfo"><span class="muted">点击画布中的任意磁极块，查看其磁化方向、面向束流的极性，以及该处磁场对电子轨迹的局部偏转作用。</span></div>
+    </div>
+    <div class="card panel">
+      <h3>单步日志（逐周期偏转）</h3>
+      <div id="log"><div>点击「单步 ▶ 一个周期」，电子将逐周期穿越磁场。</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+<script>
+(function(){
+"use strict";
+/* ============ 物理常数与状态 ============ */
+const E0=1.602e-19, ME=9.109e-31, C=3e8, GAMMA=30;
+const C0=E0/(GAMMA*ME*C);            // e/(γ m c) ≈ 19.54 /(T·m)
+const PITCH=7.5;                     // 磁极块沿 z 宽度 mm
+const ZVIEW=160;                     // 视窗 z 范围 mm
+const GMIN=0.5, GMAX=15;
+const state={ gap:8, phi:90, zE:0, sel:null, anim:false };
+
+const ML=70, CW=1160, CH=560, CY=CH/2, VS=26;          // VS: 纵向 px/mm
+const HS=(CW-ML-24)/ZVIEW;                              // 横向 px/mm
+const BH=36;                                            // 磁极块高 px
+const X=z=>ML+z*HS, Y=x=>CY-x*VS;
+
+const css=v=>getComputedStyle(document.body).getPropertyValue(v).trim();
+function halbach(g,lam){ const r=g/lam; return 3.33*Math.exp(-5.47*r+1.8*r*r); }
+function ampOf(g,lam){ const ku=2*Math.PI/lam; return C0*halbach(g,lam)/(ku*ku*1000); } // mm
+function geom(){
+  const lam=PITCH*360/state.phi, ku=2*Math.PI/lam;
+  const B0=halbach(state.gap,lam), A=ampOf(state.gap,lam);
+  const K=0.934*B0*lam/10, margin=state.gap/2-A;
+  return {lam,ku,B0,A,K,margin,gc:criticalGap(lam)};
+}
+function criticalGap(lam){           // 解 A(g)=g/2
+  const f=g=>ampOf(g,lam)-g/2;
+  if(f(GMIN)<=0) return null;        // 全程安全
+  if(f(GMAX)>=0) return -1;          // 全程碰撞
+  let lo=GMIN,hi=GMAX;
+  for(let i=0;i<60;i++){ const m=(lo+hi)/2; (f(m)>0)?lo=m:hi=m; }
+  return (lo+hi)/2;
+}
+function gapForAmp(A,lam){           // 反解：振幅 → 间隙（单调递减，二分）
+  if(A>=ampOf(GMIN,lam)) return GMIN;
+  if(A<=ampOf(GMAX,lam)) return GMAX;
+  let lo=GMIN,hi=GMAX;
+  for(let i=0;i<50;i++){ const m=(lo+hi)/2; (ampOf(m,lam)>A)?lo=m:hi=m; }
+  return (lo+hi)/2;
+}
+const trajX=(z,G)=>-G.A*Math.cos(G.ku*z);
+
+/* ============ 画布 ============ */
+const canvas=new fabric.Canvas('c',{selection:false,preserveObjectStacking:true});
+let blocks=[], dynObjs=[], handle=null, staticObjs=[];
+
+function T(txt,o){ return new fabric.Text(txt,Object.assign({fontSize:11,fontFamily:'inherit'},o)); }
+function track(obj,arr){ arr.push(obj); canvas.add(obj); return obj; }
+
+function buildStatic(G){
+  staticObjs.forEach(o=>canvas.remove(o)); staticObjs=[];
+  canvas.backgroundColor=css('--canvas');
+  // 束流轴线
+  track(new fabric.Line([X(0),CY,X(ZVIEW),CY],{stroke:css('--muted'),strokeDashArray:[6,5],strokeWidth:1,selectable:false,evented:false}),staticObjs);
+  track(T('束流轴线 z →',{left:X(ZVIEW)-92,top:CY+6,fill:css('--muted'),fontSize:10,selectable:false,evented:false}),staticObjs);
+  // z 刻度
+  for(let z=0;z<=ZVIEW;z+=20){
+    track(new fabric.Line([X(z),CH-24,X(z),CH-18],{stroke:css('--muted'),strokeWidth:1,selectable:false,evented:false}),staticObjs);
+    track(T(z+'',{left:X(z)-6,top:CH-16,fill:css('--muted'),fontSize:9,selectable:false,evented:false}),staticObjs);
+  }
+  track(T('z / mm',{left:X(ZVIEW)-8,top:CH-16,fill:css('--muted'),fontSize:9,selectable:false,evented:false}),staticObjs);
+  // 周期标记（随相位变化）
+  for(let k=1;X(k*G.lam)<CW-10;k++){
+    track(new fabric.Line([X(k*G.lam),26,X(k*G.lam),CH-30],{stroke:css('--accent'),strokeDashArray:[3,6],strokeWidth:1,opacity:.35,selectable:false,evented:false}),staticObjs);
+    if(k===1) track(T('λu = '+G.lam.toFixed(1)+' mm',{left:X(G.lam)+4,top:28,fill:css('--accent'),fontSize:10,selectable:false,evented:false}),staticObjs);
+  }
+}
+
+function buildBlocks(G){
+  blocks.forEach(b=>b.parts.forEach(p=>canvas.remove(p))); blocks=[];
+  const n=Math.ceil(ZVIEW/PITCH), w=PITCH*HS-2;
+  for(let jaw=0;jaw<2;jaw++) for(let i=0;i<n;i++){
+    const th=(i+0.5)*state.phi, rad=th*Math.PI/180, s=Math.sin(rad);
+    const nFace=s<0;                                  // 两排镜像：sinθ<0 时面向束流均为 N
+    const top=jaw===0 ? CY-state.gap/2*VS-BH : CY+state.gap/2*VS;
+    const L=X(i*PITCH)+1;
+    const dat={jaw:jaw===0?'上排':'下排', i, th};
+    const rect=new fabric.Rect({left:L,top,width:w,height:BH,
+      fill:nFace?css('--nface'):css('--sface'), stroke:'rgba(0,0,0,.25)',strokeWidth:1,
+      selectable:false,hoverCursor:'pointer'});
+    const tri=new fabric.Triangle({width:13,height:15,left:L+w/2,top:top+BH/2,originX:'center',originY:'center',
+      angle:jaw===0?90-th:90+th, fill:'rgba(255,255,255,.92)',selectable:false,hoverCursor:'pointer'});
+    const idx=T(i+'',{left:L+3,top:top+2,fontSize:8,fill:'rgba(255,255,255,.75)',selectable:false,evented:false});
+    [rect,tri,idx].forEach(p=>{p.felData=dat;canvas.add(p);});
+    blocks.push({jaw,i,parts:[rect,tri,idx],rect,tri,idx,w});
+  }
+}
+
+function updateBlockTops(){
+  blocks.forEach(b=>{
+    const top=b.jaw===0 ? CY-state.gap/2*VS-BH : CY+state.gap/2*VS;
+    b.rect.set({top}); b.tri.set({top:top+BH/2}); b.idx.set({top:top+2});
+    b.parts.forEach(p=>p.setCoords());
+  });
+}
+
+function buildDynamic(G,skipHandle){
+  dynObjs.forEach(o=>canvas.remove(o)); dynObjs=[];
+  const add=o=>track(o,dynObjs);
+  /* --- 轨迹（安全段 + 侵入段分红） --- */
+  const pts=[],danger=[];
+  for(let z=0;z<=ZVIEW;z+=0.5){
+    const x=trajX(z,G);
+    pts.push({z,x});
+    if(Math.abs(x)>state.gap/2) danger.push({z,x});
+  }
+  const path=a=>a.map((p,k)=>(k?'L':'M')+X(p.z).toFixed(1)+' '+Y(p.x).toFixed(1)).join(' ');
+  add(new fabric.Path(path(pts),{stroke:css('--accent'),strokeWidth:2,fill:'',selectable:false,evented:false}));
+  if(danger.length) add(new fabric.Path(path(danger),{stroke:css('--danger'),strokeWidth:3.5,fill:'',selectable:false,evented:false}));
+  /* --- 间隙尺寸标注 --- */
+  const dx=ML-26, y1=Y(state.gap/2), y2=Y(-state.gap/2);
+  add(new fabric.Line([dx,y1,dx,y2],{stroke:css('--muted'),strokeWidth:1.2,selectable:false,evented:false}));
+  add(new fabric.Triangle({width:8,height:8,left:dx,top:y1,originX:'center',originY:'center',angle:0,fill:css('--muted'),selectable:false,evented:false}));
+  add(new fabric.Triangle({width:8,height:8,left:dx,top:y2,originX:'center',originY:'center',angle:180,fill:css('--muted'),selectable:false,evented:false}));
+  add(T('g = '+state.gap.toFixed(3)+' mm',{left:dx-14,top:CY-8,angle:-90,fill:css('--muted'),fontSize:10,selectable:false,evented:false,originX:'center'}));
+  /* --- 碰撞警示 --- */
+  if(G.margin<-0.01){
+    add(T('⚠ 碰撞：摆幅超出半间隙，电子束撞击磁极表面',{left:ML+8,top:8,fill:css('--danger'),fontSize:13,fontWeight:'bold',selectable:false,evented:false}));
+  } else if(Math.abs(G.margin)<=0.01){
+    add(T('◆ 临界状态：摆幅恰好触及磁极表面',{left:ML+8,top:8,fill:css('--warn'),fontSize:13,fontWeight:'bold',selectable:false,evented:false}));
+  }
+  /* --- 选中磁极的局部作用标注 --- */
+  if(state.sel){
+    const {jaw,i}=state.sel, zc=(i+0.5)*PITCH, G2=G;
+    const By=G2.B0*Math.cos(G2.ku*zc), x0=trajX(zc,G2);
+    const seg=[]; for(let z=i*PITCH;z<=(i+1)*PITCH;z+=0.25) seg.push({z,x:trajX(z,G2)});
+    add(new fabric.Path(path(seg),{stroke:css('--accent2'),strokeWidth:4.5,fill:'',opacity:.85,selectable:false,evented:false}));
+    const dir=By>0?-1:1, ax=X(zc), ay=Y(x0);   // By>0 → 力向上（屏幕 -y）
+    add(new fabric.Line([ax,ay,ax,ay+dir*34],{stroke:css('--accent2'),strokeWidth:2.5,selectable:false,evented:false}));
+    add(new fabric.Triangle({width:10,height:10,left:ax,top:ay+dir*34,originX:'center',originY:'center',
+      angle:dir<0?0:180,fill:css('--accent2'),selectable:false,evented:false}));
+    add(T('F '+(By>0?'↑':'↓'),{left:ax+6,top:ay+dir*20-6,fill:css('--accent2'),fontSize:11,fontWeight:'bold',selectable:false,evented:false}));
+  }
+  /* --- 电子与已走轨迹 --- */
+  if(state.zE>0.01){
+    const tp=[]; for(let z=0;z<=state.zE;z+=0.25) tp.push({z,x:trajX(z,G)});
+    add(new fabric.Path(path(tp),{stroke:css('--accent2'),strokeWidth:2.5,fill:'',selectable:false,evented:false}));
+  }
+  const ex=X(state.zE), ey=Y(trajX(state.zE,G));
+  const slope=G.A*G.ku*Math.sin(G.ku*state.zE);            // dx/dz
+  const len=26, norm=Math.hypot(1,slope*VS/HS);
+  const tx=len/norm, ty=-slope*VS/HS*len/norm;
+  add(new fabric.Line([ex,ey,ex+tx,ey+ty],{stroke:css('--accent2'),strokeWidth:2,selectable:false,evented:false}));
+  add(new fabric.Circle({radius:5.5,left:ex,top:ey,originX:'center',originY:'center',
+    fill:css('--accent2'),stroke:'#fff',strokeWidth:1.5,selectable:false,evented:false}));
+  /* --- 振幅手柄 --- */
+  const hx=X(G.lam/2), hy=Y(G.A);
+  if(!handle){
+    handle=new fabric.Circle({radius:8,fill:css('--accent2'),stroke:'#fff',strokeWidth:2,
+      originX:'center',originY:'center',lockMovementX:true,hasControls:false,hasBorders:false,hoverCursor:'ns-resize'});
+    handle.isHandle=true; canvas.add(handle);
+  }
+  if(!skipHandle) handle.set({left:hx,top:hy});
+  handle.setCoords(); canvas.bringToFront(handle);
+  canvas.renderAll();
+}
+
+function rebuild(){ const G=geom(); buildStatic(G); buildBlocks(G); buildDynamic(G,false); updateUI(G); }
+function updateDynamic(skipHandle){ const G=geom(); updateBlockTops(); buildDynamic(G,skipHandle); updateUI(G); }
+
+/* ============ UI 读数 ============ */
+const $=id=>document.getElementById(id);
+function updateUI(G){
+  $('gapVal').textContent=state.gap.toFixed(3)+' mm';
+  $('phiVal').textContent=state.phi+'°  →  λu = '+G.lam.toFixed(1)+' mm';
+  const st=$('status');
+  if(G.margin<-0.01){ st.className='badge hit'; st.textContent='✖ 碰撞'; }
+  else if(Math.abs(G.margin)<=0.01){ st.className='badge crit'; st.textContent='◆ 临界'; }
+  else { st.className='badge ok'; st.textContent='✔ 安全'; }
+  const gcTxt=G.gc===null?'无（全程安全）':G.gc===-1?'超出量程':G.gc.toFixed(3)+' mm';
+  const R=[['峰值磁场 B₀',G.B0.toFixed(3)+' T'],['波荡器参数 K',G.K.toFixed(2)],
+    ['摆动振幅 A',G.A.toFixed(3)+' mm'],['半间隙 g/2',(state.gap/2).toFixed(3)+' mm'],
+    ['余量 g/2 − A',(G.margin>=0?'+':'')+G.margin.toFixed(3)+' mm'],
+    ['临界间隙 gc',gcTxt],['摆动周期 λu',G.lam.toFixed(1)+' mm'],
+    ['峰值偏转角 K/γ',(G.A*G.ku*1000).toFixed(1)+' mrad']];
+  $('reads').innerHTML=R.map(r=>'<div class="read"><div class="k">'+r[0]+'</div><div class="v">'+r[1]+'</div></div>').join('');
+  if(state.sel) showPole(state.sel.jaw,state.sel.i,G);
+}
+function log(msg){ const d=document.createElement('div'); d.textContent=msg; const L=$('log'); L.prepend(d); while(L.children.length>9)L.lastChild.remove(); }
+
+/* ============ 磁极点击 ============ */
+function showPole(jaw,i,G){
+  const zc=(i+0.5)*PITCH, th=((i+0.5)*state.phi)%360, rad=th*Math.PI/180;
+  const By=G.B0*Math.cos(G.ku*zc), nFace=Math.sin(rad)<0;
+  const dth=C0*By/1000*PITCH*1000;   // 过该块的偏转角增量 mrad
+  $('poleInfo').innerHTML=
+    '<b>'+jaw+' #'+(i)+'</b>　磁化方向 θ = '+th.toFixed(0)+'°（块内白色箭头）<br>'+
+    '面向束流极性：<span class="pill '+(nFace?'n':'s')+'">'+(nFace?'N 极':'S 极')+'</span><br>'+
+    '局部磁场 B_y = '+(By>=0?'+':'')+By.toFixed(3)+' T（'+(By>0?'向上':By<0?'向下':'过零')+'）<br>'+
+    '对电子作用：洛伦兹力 F = qv×B 向'+(By>0?'上':'下')+'，轨迹在此向'+(By>0?'上':'下')+'弯曲；'+
+    '穿过本块偏转角改变 ≈ <b>'+dth.toFixed(1)+' mrad</b>（画布中橙色段与力箭头所示）。';
+}
+canvas.on('mouse:down',opt=>{
+  const t=opt.target;
+  if(t&&t.felData){
+    state.sel={jaw:t.felData.jaw==='上排'?0:1,i:t.felData.i};
+    blocks.forEach(b=>b.rect.set({stroke:'rgba(0,0,0,.25)',strokeWidth:1}));
+    const b=blocks.find(b=>b.jaw===state.sel.jaw&&b.i===state.sel.i);
+    b.rect.set({stroke:css('--accent2'),strokeWidth:3});
+    updateDynamic(false);
+  }
+});
+
+/* ============ 联动控制 ============ */
+$('gap').addEventListener('input',e=>{ state.gap=+e.target.value; state.zE=0; updateDynamic(false); });
+$('phi').addEventListener('input',e=>{ state.phi=+e.target.value; state.zE=0; rebuild(); });
+
+canvas.on('object:moving',e=>{
+  if(!e.target.isHandle) return;
+  const G=geom();
+  let A=(CY-e.target.top)/VS;
+  A=Math.max(ampOf(GMAX,G.lam),Math.min(ampOf(GMIN,G.lam),A));
+  state.gap=gapForAmp(A,G.lam);
+  $('gap').value=state.gap; state.zE=0;
+  updateDynamic(true);   // 拖动中不重建手柄
+});
+canvas.on('mouse:up',()=>{ if(handle) updateDynamic(false); });
+
+$('preset').addEventListener('click',()=>{
+  const G=geom();
+  if(G.gc===null){ log('当前相位 φ='+state.phi+'° 下不存在临界间隙（任何间隙均安全）。'); return; }
+  if(G.gc===-1){ log('当前相位下整个量程均碰撞，无法停在临界点。'); return; }
+  state.gap=G.gc; $('gap').value=G.gc; state.zE=0;
+  updateDynamic(false);
+  log('已置于临界间隙 g = '+G.gc.toFixed(3)+' mm：摆幅 A = g/2 = '+(G.gc/2).toFixed(3)+' mm，轨迹恰好触及磁极表面；再小即碰撞。');
+});
+
+$('reset').addEventListener('click',()=>{ state.zE=0; state.anim=false; updateDynamic(false); log('电子已重置到入口 z = 0。'); });
+
+$('step').addEventListener('click',()=>{
+  if(state.anim) return;
+  const G=geom();
+  if(state.zE+G.lam>ZVIEW+0.01){ state.zE=0; log('已到磁阵末端，电子重置到入口，再次点击继续。'); updateDynamic(false); return; }
+  state.anim=true; $('step').disabled=true;
+  const z0=state.zE, t0=performance.now(), dur=700;
+  (function tick(now){
+    const p=Math.min(1,(now-t0)/dur);
+    state.zE=z0+G.lam*p;
+    updateDynamic(false);
+    if(p<1) requestAnimationFrame(tick);
+    else{
+      state.anim=false; $('step').disabled=false;
+      const n=Math.round(state.zE/G.lam), x=trajX(state.zE,G), th=G.A*G.ku*Math.sin(G.ku*state.zE)*1000;
+      log('第 '+n+' 周期末：z='+state.zE.toFixed(1)+' mm，x='+x.toFixed(3)+' mm，瞬时偏转角='+th.toFixed(1)+' mrad'+(G.margin<-0.01?'（⚠ 已碰撞，实际会被磁极截获）':''));
+    }
+  })(t0);
+});
+
+/* 主题切换时重绘 */
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{ canvas.remove(handle); handle=null; rebuild(); });
+
+rebuild();
+log('就绪。拖动间隙滑块或橙色振幅手柄，观察双向联动；「临界预置」直达碰撞边界。');
+})();
+</script>
