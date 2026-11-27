@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>插齿机展成齿廓工作台</title>
+<style>
+:root{
+  --bg:#0e1218; --panel:#161d27; --panel2:#1d2632; --fg:#e6ecf3; --muted:#93a1b3;
+  --line:#2a3646; --accent:#4da3ff; --steel:#8fa3b8; --steel-dark:#5d6e80;
+  --ok:#37d399; --warn:#ffb020; --bad:#ff4d5e; --ghost:#2f7fff; --chip:#ff9e3d;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#eef1f5; --panel:#ffffff; --panel2:#f4f7fa; --fg:#17202b; --muted:#5b6b7d;
+    --line:#d3dce6; --accent:#1f6fe5; --steel:#7185a0; --steel-dark:#46566a;
+    --ok:#0a9d6c; --warn:#c77700; --bad:#e01e30; --ghost:#1f6fe5; --chip:#d97706;
+  }
+}
+:root[data-theme="dark"]{color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font:13px/1.5 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin-bottom:10px}
+header h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.5px}
+header .sub{color:var(--muted);font-size:12px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 332px;gap:12px;align-items:start}
+@media(max-width:980px){.layout{grid-template-columns:1fr}}
+.stage-wrap{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;position:relative;min-width:0}
+.stage-canvas{width:100%;height:auto;display:block;border-radius:8px;background:var(--panel2);touch-action:none;cursor:grab}
+.stage-canvas:active{cursor:grabbing}
+.inset{position:absolute;right:16px;top:16px;width:300px;max-width:44%;background:color-mix(in srgb,var(--panel) 90%,transparent);border:1px solid var(--line);border-radius:10px;padding:8px;backdrop-filter:blur(6px)}
+.inset.hidden{display:none}
+.inset canvas{width:100%;height:auto;display:block;border-radius:6px;background:var(--panel2)}
+.inset .cap{display:flex;justify-content:space-between;gap:6px;color:var(--muted);font-size:11px;margin-top:5px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:13px}
+.group{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--panel2)}
+.group h3{margin:0 0 8px;font-size:12px;color:var(--muted);font-weight:600;letter-spacing:1px;text-transform:uppercase}
+.ctl{margin-bottom:10px}
+.ctl:last-child{margin-bottom:0}
+.ctl .row{display:flex;justify-content:space-between;gap:8px;margin-bottom:3px}
+.ctl label{color:var(--fg)}
+.ctl .val{font-variant-numeric:tabular-nums;color:var(--accent);font-weight:600;white-space:nowrap}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+.feed-track{position:relative;padding-bottom:30px}
+.tick{position:absolute;top:3px;width:2px;height:9px;pointer-events:none;transform:translateX(-1px)}
+.tick span{position:absolute;top:12px;font-size:10px;white-space:nowrap}
+.tick.nom{background:var(--muted)}
+.tick.nom span{left:0;transform:translateX(0);color:var(--muted)}
+.tick.crit{background:var(--bad);width:3px;height:10px}
+.tick.crit span{right:0;transform:translateX(0);color:var(--bad);font-weight:700}
+/* 两刻度重合时,临界标签下沉一行避免压字 */
+.tick.crit.crowded span{top:24px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+button{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:8px;padding:7px 9px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:650}
+button.primary:hover{filter:brightness(1.08);color:#fff}
+.checks{display:flex;flex-direction:column;gap:6px}
+.checks label{display:flex;align-items:center;gap:7px;cursor:pointer}
+.checks input{accent-color:var(--accent);width:15px;height:15px}
+.readout{display:grid;grid-template-columns:1fr auto;gap:3px 10px;font-variant-numeric:tabular-nums;font-size:12px}
+.readout .k{color:var(--muted)}
+.readout .v{text-align:right}
+.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.5px}
+.badge.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.badge.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.badge.bad{background:color-mix(in srgb,var(--bad) 20%,transparent);color:var(--bad)}
+.angle-diff{color:var(--muted);font-size:11px;margin-top:6px}
+.hint{color:var(--muted);font-size:11px;line-height:1.55}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+footer{color:var(--muted);font-size:11px;margin-top:10px;line-height:1.6}
+code{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+</style>
+</head>
+<body>
+<header>
+  <h1>插齿机展成齿廓加工工作台</h1>
+  <span class="sub">啮合滚切 · 逐冲径向进给 · 包络成形 · 根切判据可视化</span>
+</header>
+
+<div class="layout">
+  <div class="stage-wrap">
+    <canvas id="stage" class="stage-canvas" width="1000" height="640"></canvas>
+    <div id="inset" class="inset hidden">
+      <canvas id="section" width="600" height="420"></canvas>
+      <div class="cap"><span>剖切视图 · 啮合区放大</span><span id="chipLabel">橙=当前切削层(层间间隙)</span></div>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--steel)"></i>工件材料</span>
+      <span><i style="background:var(--accent)"></i>插齿刀</span>
+      <span style="color:var(--ghost)"><i style="background:color-mix(in srgb,var(--ghost) 25%,transparent)"></i>逐冲包络叠层</span>
+      <span><i style="background:var(--bad)"></i>根切(被啃掉的齿根材料)</span>
+      <span><i style="background:var(--chip)"></i>当前切削层 / 间隙</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="group">
+      <h3>工件与刀具参数</h3>
+      <div class="ctl">
+        <div class="row"><label>工件齿数 z</label><span class="val" id="vZ">17</span></div>
+        <input type="range" id="sZ" min="8" max="80" step="1" value="17">
+      </div>
+      <div class="ctl">
+        <div class="row"><label>模数 m (mm)</label><span class="val" id="vM">5</span></div>
+        <input type="range" id="sM" min="2" max="10" step="0.5" value="5">
+      </div>
+      <div class="ctl">
+        <div class="row"><label>压力角 α (°)</label><span class="val" id="vA">20</span></div>
+        <input type="range" id="sA" min="14.5" max="25" step="0.5" value="20">
+      </div>
+      <div class="ctl">
+        <div class="row"><label>插齿刀齿数 z₀</label><span class="val" id="vZ0">20</span></div>
+        <input type="range" id="sZ0" min="10" max="40" step="1" value="20">
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>径向进给(相对总行程 t)</h3>
+      <div class="ctl">
+        <div class="row"><label>进给深度 t</label><span class="val" id="vF">1.00</span></div>
+        <div class="feed-track">
+          <input type="range" id="sF" min="0.55" max="1.10" step="0.02" value="1.00">
+          <div class="tick nom" id="tickNom"><span>全齿深 1.00</span></div>
+          <div class="tick crit" id="tickCrit"><span id="tickCritTxt">临界 t*</span></div>
+        </div>
+      </div>
+      <div class="hint">t=1.00 为额定全齿深(刀尖到齿根圆);t&gt;1 为过进给,刀盘越过齿根继续啃入。把滑块推过红色临界刻度 t* 即可看到齿根被啃掉。</div>
+    </div>
+
+    <div class="group">
+      <h3>运行与视图</h3>
+      <div class="btns">
+        <button id="btnPreset" class="primary">临界预置(刚好不根切)</button>
+        <button id="btnPlay">▶ 播放冲切</button>
+        <button id="btnStep">单冲一步</button>
+        <button id="btnReset">相位复位</button>
+      </div>
+      <div class="checks" style="margin-top:9px">
+        <label><input type="checkbox" id="cGhost" checked>显示逐冲包络叠层</label>
+        <label><input type="checkbox" id="cSection">剖切开关(看当前层与齿面间隙)</label>
+        <label><input type="checkbox" id="cTheory">根切时叠加理论渐开线</label>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>联动与判据读数</h3>
+      <div class="readout">
+        <span class="k">状态</span><span class="v" id="oStatus">—</span>
+        <span class="k">传动比 i = z/z₀</span><span class="v" id="oRatio">—</span>
+        <span class="k">工件转角 θ₁</span><span class="v" id="oThW">0.000°</span>
+        <span class="k">刀转角 θ₂ = −i·θ₁</span><span class="v" id="oThC">0.000°</span>
+        <span class="k">每冲工件转角</span><span class="v" id="oStep">—</span>
+        <span class="k">当前中心距 a</span><span class="v" id="oA">—</span>
+        <span class="k">啮合角 α′</span><span class="v" id="oAp">—</span>
+        <span class="k">临界中心距 a*</span><span class="v" id="oAc">—</span>
+        <span class="k">临界进给 t*</span><span class="v" id="oTc">—</span>
+      </div>
+      <div class="angle-diff">在任一圆盘上按住拖动:拖工件则刀按 i 严格跟随;拖刀则工件反向跟随,相位始终联动。</div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  原理:插齿刀与工件相当于一对外啮合渐开线齿轮,两节圆严格按 <code>θ₂ = −(z/z₀)·θ₁</code> 纯滚动;刀每冲一次,工件转过一个齿距的 1/n,
+  刀同时径向进给一档。刀齿历次扫过区域的并集构成包络齿面。根切判据(刀尖圆越过啮合线与工件基圆的切点):
+  <code>a* = √[(rₐ₀²−r_b₀²)+(r_b₁+r_b₀)²]</code>,实际中心距 a &lt; a* 即发生根切,红色区域为相对临界安全齿面被多啃掉的材料。
+</footer>
+
+<script>
+'use strict';
+/* 全局状态。角度约定:屏幕 y 向下,正角 = 顺时针(与 Canvas rotate 一致)。 */
+const S = {
+  z:17, m:5, alpha:20*Math.PI/180, z0:20,
+  feed:1.00, n:30,
+  thetaW:0,                        // 工件转角 θ₁(顺时针为正)
+  playing:false, k:0, K:0,
+  ghost:true, section:false, theory:false,
+  strokePhase:0,
+};
+const STEP_F=0.02, F_MIN=0.55, F_MAX=1.10;
+
+const $=id=>document.getElementById(id);
+const stage=$('stage'), ctx=stage.getContext('2d');
+const sec=$('section'), sctx=sec.getContext('2d');
+const inset=$('inset');
+
+/* ============ 几何参数 ============ */
+const inv=t=>Math.tan(t)-t;
+function geom(){
+  const {z,m,alpha,z0,feed}=S;
+  const r1=m*z/2, r2=m*z0/2;
+  const rb1=r1*Math.cos(alpha), rb2=r2*Math.cos(alpha);
+  const ra1=r1+m, rf1=r1-1.25*m;
+  const ra2=r2+1.25*m, rf2=r2+m;
+  const a0=r1+r2;
+  // 进给模型(线性、直观):
+  //   t=1.00 → 中心距 a0,刀齿顶圆与工件齿根圆相切,切出额定全齿深;
+  //   t<1    → 刀按比例后退(未切到全齿深),t=F_MIN 时刀尖刚接触毛坯外圆 aStart;
+  //   t>1    → 过进给,刀越过齿根圆继续啃入。
+  const aStart=ra1+ra2;
+  const aFull=a0;
+  const aFin=aFull-(feed-1)*(aStart-aFull)/(1-F_MIN);
+  const ap=Math.acos(Math.min(1,(rb1+rb2)/aFin));
+  const aCrit=Math.sqrt(ra2*ra2-rb2*rb2+(rb1+rb2)*(rb1+rb2));
+  // 临界进给:由 aCrit 反标到同一 t 轴
+  const tCrit=1+(aFull-aCrit)*(1-F_MIN)/(aStart-aFull);
+  return {r1,r2,rb1,rb2,ra1,rf1,ra2,rf2,a0,aStart,aFull,aFin,ap,aCrit,tCrit};
+}
+
+/* 标准渐开线直齿轮外形(尖角齿廓)。
+   屏幕极角 θ 顺时针为正,点=(ρcosθ,ρsinθ);0 号齿对称轴在 θ=0。
+   外啮合两齿轮用同一外形、相反转角即可正确啮合。 */
+function gearPath(z,m,ha,hf,alpha){
+  const r=m*z/2, rb=r*Math.cos(alpha), ra=r+ha*m, rf=r-hf*m;
+  const beta=Math.PI/(2*z), pitch=2*Math.PI/z;
+  const ta=Math.sqrt((ra/rb)**2-1);
+  const tb=rf<rb ? 0 : Math.sqrt((rf/rb)**2-1);
+  const P=(rho,ang)=>[rho*Math.cos(ang), rho*Math.sin(ang)];
+  const path=new Path2D();
+  for(let j=0;j<z;j++){
+    const c=j*pitch;
+    const angR=t=>c+beta+inv(alpha)-inv(t);
+    const angL=t=>c-beta-inv(alpha)+inv(t);
+    const N=12;
+    const p0=P(rf,angR(tb));
+    j===0?path.moveTo(p0[0],p0[1]):path.lineTo(p0[0],p0[1]);
+    if(rf<rb){const pb=P(rb,angR(0));path.lineTo(pb[0],pb[1]);}
+    for(let i=1;i<=N;i++){const t=tb+(ta-tb)*i/N;const p=P(rb*Math.sqrt(1+t*t),angR(t));path.lineTo(p[0],p[1]);}
+    const aTipR=angR(ta), aTipL=angL(ta);
+    for(let i=1;i<=5;i++){const a=aTipR+(aTipL-aTipR)*i/5;const p=P(ra,a);path.lineTo(p[0],p[1]);}
+    for(let i=N-1;i>=0;i--){const t=tb+(ta-tb)*i/N;const p=P(rb*Math.sqrt(1+t*t),angL(t));path.lineTo(p[0],p[1]);}
+    if(rf<rb){const pb=P(rb,angL(0));path.lineTo(pb[0],pb[1]);}
+    const aEnd=angL(tb), aNext=(j+1)*pitch+beta+inv(alpha)-inv(tb);
+    for(let i=1;i<=4;i++){const a=aEnd+(aNext-aEnd)*i/4;const p=P(rf,a);path.lineTo(p[0],p[1]);}
+  }
+  path.closePath();
+  return path;
+}
+
+/* 0 号齿的理论渐开线齿面(下半侧) */
+function involuteFlankPath(g,fromR){
+  const {rb1}=g, al=S.alpha;
+  const ta=Math.sqrt((g.ra1/rb1)**2-1);
+  const t0=fromR<=rb1?0:Math.sqrt((fromR/rb1)**2-1);
+  const beta=Math.PI/(2*S.z);
+  const path=new Path2D();
+  for(let i=0;i<=24;i++){
+    const t=t0+(ta-t0)*i/24;
+    const ang=beta+inv(al)-inv(t);
+    const rho=rb1*Math.sqrt(1+t*t);
+    const x=rho*Math.cos(ang), y=rho*Math.sin(ang);
+    i?path.lineTo(x,y):path.moveTo(x,y);
+  }
+  return path;
+}
+
+/* ============ 逐冲切除仿真(离屏掩码,destination-out) ============ */
+const MASK=840, N_RAY=1440;
+let maskCv, ghostCv, safeCv, profR, safeR, viewScale=0, viewC=MASK/2;
+let replayCv=null;
+
+function blankDisk(){
+  const cv=document.createElement('canvas');cv.width=cv.height=MASK;
+  const c=cv.getContext('2d');
+  c.fillStyle=cssVar('--steel');
+  c.beginPath();c.arc(viewC,viewC,viewC-2,0,7);c.fill();
+  c.strokeStyle=cssVar('--steel-dark');c.lineWidth=2;c.stroke();
+  return cv;
+}
+
+/* 固定参考系展成仿真(零参考系变换歧义):
+   毛坯盘固定在初始位置不动只是存储载体——每冲先按真实联动把刀放到
+   定系位置(刀心恒在工件右侧 (a,0),刀体转角 θ₂=−iθ₁),再整体逆旋转 −θ₁,
+   使刀齿落到"毛坯初始坐标"中切除。等价于毛坯按 θ₁ 转动着挨刀,全周均匀包络。 */
+function runSim(aFinal,withGhost,cutter){
+  const g=geom();
+  const cv=blankDisk(), c=cv.getContext('2d');
+  let gh=null,gc=null;
+  if(withGhost){
+    gh=document.createElement('canvas');gh.width=gh.height=MASK;gc=gh.getContext('2d');
+  }
+  const K=S.z*S.n, feedEnd=Math.floor(K*0.42);
+  const iRatio=S.z/S.z0;
+  c.globalCompositeOperation='destination-out';
+  for(let k=0;k<K;k++){
+    const a=k<feedEnd ? g.aStart-(g.aStart-aFinal)*(k/feedEnd) : aFinal;
+    const thW=k*2*Math.PI/K;
+    const thC=-iRatio*thW;                     // 真实刀体转角(定系)
+    c.setTransform(viewScale,0,0,viewScale,viewC,viewC);
+    c.rotate(-thW);                            // 逆旋转:回到毛坯初始坐标
+    c.translate(a,0);c.rotate(thC);
+    c.fill(cutter);
+    if(gc && k%2===0){
+      gc.setTransform(viewScale,0,0,viewScale,viewC,viewC);
+      gc.rotate(-thW);gc.translate(a,0);gc.rotate(thC);
+      gc.strokeStyle='rgba(80,150,255,0.06)';gc.lineWidth=0.25;
+      gc.stroke(cutter);
+    }
+  }
+  c.setTransform(1,0,0,1,0,0);
+  return {cv,gh,K};
+}
+
+/* 径向光线扫描:从毛坯外圆向内找第一层材料;齿槽方向无材料则返回外圆 */
+function scanProfile(cv){
+  const g=geom();
+  const img=cv.getContext('2d').getImageData(0,0,MASK,MASK).data;
+  const out=new Float32Array(N_RAY);
+  const rStartPx=Math.min(viewC-3,g.ra1*viewScale+1);
+  for(let i=0;i<N_RAY;i++){
+    const phi=i*2*Math.PI/N_RAY, cx=Math.cos(phi), sy=Math.sin(phi);
+    let hit=-1;
+    for(let r=rStartPx;r>4;r-=0.75){
+      const px=Math.round(viewC+r*cx), py=Math.round(viewC+r*sy);
+      if(img[(py*MASK+px)*4+3]>128){hit=r;break;}
+    }
+    out[i]=(hit>0?hit:rStartPx)/viewScale;
+  }
+  return out;
+}
+
+let queued=false;
+function recompute(){
+  const g=geom();
+  viewScale=(MASK*0.5)/(g.ra1*1.14);
+  viewC=MASK/2;
+  const cutter=gearPath(S.z0,S.m,1.25,1.0,S.alpha);
+  const sim=runSim(g.aFin,true,cutter);
+  maskCv=sim.cv;ghostCv=sim.gh;S.K=sim.K;
+  profR=scanProfile(maskCv);
+  if(g.aFin<g.aCrit-1e-6){
+    safeCv=runSim(g.aCrit,false,cutter).cv;
+    safeR=scanProfile(safeCv);
+  }else{safeCv=null;safeR=null;}
+  S.k=S.K;
+  updateReadouts(g);
+  render();
+}
+function queueRecompute(){
+  if(queued)return;queued=true;
+  requestAnimationFrame(()=>{queued=false;recompute();});
+}
+
+/* ============ 主画面渲染 ============ */
+const cssVar=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let W=1000,H=640;
+function viewFrame(g){
+  const spanX=g.aStart+g.ra2+8;
+  const spanY=g.ra1*2+8;
+  const k=Math.min(W*0.94/spanX, H*0.86/spanY);
+  return {k, ox:W*0.36, oy:H*0.52};
+}
+function render(){
+  const g=geom();
+  ctx.clearRect(0,0,W,H);
+  if(!maskCv)return;
+  const {k,ox,oy}=viewFrame(g);
+  const X=x=>ox+k*x, Y=y=>oy+k*y;
+  const thC=-(S.z/S.z0)*S.thetaW;
+  const cutter=gearPath(S.z0,S.m,1.25,1.0,S.alpha);
+  const undercut=g.aFin<g.aCrit-1e-6;
+
+  // 网格
+  ctx.save();
+  ctx.strokeStyle='rgba(128,150,175,0.10)';ctx.lineWidth=1;
+  for(let x=ox%40;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=oy%40;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.restore();
+
+  // 中心距连线与节圆/基圆
+  ctx.save();
+  ctx.setLineDash([5,5]);ctx.strokeStyle=cssVar('--muted');ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(X(0),Y(0));ctx.lineTo(X(g.aFin),Y(0));ctx.stroke();
+  const ring=(r,col)=>{ctx.beginPath();ctx.arc(X(0),Y(0),k*r,0,7);ctx.strokeStyle=col;ctx.stroke();};
+  ring(g.r1,'rgba(147,161,179,0.55)');ring(g.rb1,'rgba(147,161,179,0.30)');
+  ctx.beginPath();ctx.arc(X(g.aFin),Y(0),k*g.r2,0,7);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // 工件材料 + 包络叠层(播放时用逐冲重放掩码)。掩码边长大于毛坯,按毛坯直径取绘制范围
+  const mat=(S.playing&&replayCv)?replayCv:maskCv;
+  const drawR=g.ra1*1.02;
+  ctx.save();ctx.translate(ox,oy);ctx.scale(k,k);
+  const ms=MASK/viewScale;
+  ctx.save();
+  ctx.beginPath();ctx.arc(0,0,drawR,0,7);ctx.clip();
+  ctx.drawImage(mat,-ms/2,-ms/2,ms,ms);
+  if(!S.playing&&S.ghost&&ghostCv)ctx.drawImage(ghostCv,-ms/2,-ms/2,ms,ms);
+  ctx.restore();
+  ctx.restore();
+
+  if(!S.playing) drawProfile(g,k,ox,oy,undercut);
+
+  // 理论渐开线对照
+  if(!S.playing&&S.theory&&undercut){
+    ctx.save();ctx.translate(ox,oy);ctx.scale(k,k);
+    ctx.setLineDash([4,3]);ctx.lineWidth=0.35;ctx.strokeStyle=cssVar('--bad');
+    ctx.stroke(involuteFlankPath(g,g.rf1));
+    ctx.setLineDash([]);ctx.restore();
+    ctx.fillStyle=cssVar('--bad');ctx.font='12px sans-serif';ctx.textAlign='left';
+    ctx.fillText('虚线:理论渐开线(齿根段已被根切)',X(2),Y(-g.ra1)-8);
+  }
+
+  // 插齿刀(带往复行程)
+  const recip=S.playing?Math.sin(S.strokePhase*2*Math.PI)*1.4*S.m:0;
+  ctx.save();
+  ctx.translate(X(g.aFin),Y(recip));ctx.rotate(thC);ctx.scale(k,k);
+  ctx.fillStyle='rgba(77,163,255,0.20)';
+  ctx.strokeStyle=cssVar('--accent');ctx.lineWidth=0.35;
+  ctx.fill(cutter);ctx.stroke(cutter);
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(g.ra2,0);
+  ctx.strokeStyle=cssVar('--accent');ctx.lineWidth=0.5;ctx.stroke();
+  ctx.restore();
+
+  // 往复箭头
+  ctx.save();
+  ctx.strokeStyle=cssVar('--accent');ctx.fillStyle=cssVar('--accent');ctx.lineWidth=1.6;
+  const ax=X(g.aFin), yT=Y(recip)-k*g.ra2-36, yB=Y(recip)-k*g.ra2-14;
+  ctx.beginPath();ctx.moveTo(ax,yT);ctx.lineTo(ax,yB);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(ax-4,yT+6);ctx.lineTo(ax,yT);ctx.lineTo(ax+4,yT+6);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(ax-4,yB-6);ctx.lineTo(ax,yB);ctx.lineTo(ax+4,yB-6);ctx.stroke();
+  ctx.font='11px sans-serif';ctx.textAlign='center';ctx.fillText('往复冲切',ax,yT-6);
+  ctx.restore();
+
+  drawCenter(0,0,'工件 O₁',S.thetaW,false,k,ox,oy,g);
+  drawCenter(g.aFin,recip,'插齿刀 O₂',thC,true,k,ox,oy,g);
+
+  ctx.save();
+  ctx.fillStyle=cssVar('--muted');ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('节圆 r₁',X(g.r1*Math.cos(-0.5)),Y(g.r1*Math.sin(-0.5)));
+  ctx.fillText('基圆 r_b₁',X(g.rb1*Math.cos(2.5)),Y(g.rb1*Math.sin(2.5)));
+  ctx.fillText(`中心距 a=${g.aFin.toFixed(2)} mm`,(X(0)+X(g.aFin))/2,Y(0)+18);
+  ctx.restore();
+
+  if(undercut){
+    ctx.fillStyle=cssVar('--bad');ctx.font='bold 13px sans-serif';ctx.textAlign='left';
+    ctx.fillText('⚠ 根切:齿根材料被刀尖啃掉(红区)',X(-g.ra1),Y(g.ra1)+26);
+  }
+  if(S.section)renderSection(g,cutter,recip,thC,mat);
+}
+
+/* 齿廓描边 + 根切红带。
+   红带按角度环带分段:每段外边界走安全轮廓、内边界走实际轮廓,各自闭合,避免跨接缝缠绕。 */
+function drawProfile(g,k,ox,oy,undercut){
+  ctx.save();ctx.translate(ox,oy);ctx.scale(k,k);
+  ctx.beginPath();
+  for(let i=0;i<N_RAY;i++){
+    const phi=i*2*Math.PI/N_RAY,r=profR[i];
+    const x=r*Math.cos(phi),y=r*Math.sin(phi);
+    i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+  }
+  ctx.closePath();
+  ctx.strokeStyle='rgba(10,14,20,0.7)';ctx.lineWidth=0.3;ctx.stroke();
+
+  if(undercut&&safeR){
+    const flagged=new Array(N_RAY).fill(false);
+    for(let i=0;i<N_RAY;i++)flagged[i]=(safeR[i]-profR[i])>0.02*S.m;
+    let i=0;
+    while(i<N_RAY){
+      while(i<N_RAY&&!flagged[i])i++;
+      const s=i;
+      while(i<N_RAY&&flagged[i])i++;
+      const e=i;                       // [s,e) 为一段连续根切角域
+      if(e<=s)break;
+      ctx.beginPath();
+      for(let j=s;j<e;j++){
+        const phi=j*2*Math.PI/N_RAY,r=safeR[j];
+        const x=r*Math.cos(phi),y=r*Math.sin(phi);
+        j===s?ctx.moveTo(x,y):ctx.lineTo(x,y);
+      }
+      for(let j=e-1;j>=s;j--){
+        const phi=j*2*Math.PI/N_RAY,r=profR[j];
+        ctx.lineTo(r*Math.cos(phi),r*Math.sin(phi));
+      }
+      ctx.closePath();
+      ctx.fillStyle='rgba(255,60,80,0.55)';
+      ctx.strokeStyle=cssVar('--bad');ctx.lineWidth=0.4;
+      ctx.fill();ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawCenter(cx,cy,name,theta,isCutter,k,ox,oy,g){
+  const X=x=>ox+k*x,Y=y=>oy+k*y;
+  ctx.save();
+  ctx.strokeStyle=isCutter?cssVar('--accent'):cssVar('--fg');ctx.lineWidth=1.4;
+  ctx.beginPath();ctx.moveTo(X(cx)-5,Y(cy));ctx.lineTo(X(cx)+5,Y(cy));
+  ctx.moveTo(X(cx),Y(cy)-5);ctx.lineTo(X(cx),Y(cy)+5);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(X(cx),Y(cy));
+  ctx.lineTo(X(cx)+10*Math.cos(theta),Y(cy)+10*Math.sin(theta));
+  ctx.strokeStyle=isCutter?'rgba(77,163,255,0.85)':'rgba(230,236,243,0.85)';ctx.stroke();
+  ctx.fillStyle=cssVar('--muted');ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText(name,X(cx),Y(cy)+(isCutter?18:-12));
+  ctx.restore();
+}
+
+/* ============ 剖切视图 ============ */
+function renderSection(g,cutter,recip,thC,mat){
+  const w=sec.width,h=sec.height;
+  sctx.clearRect(0,0,w,h);
+  const r1p=g.aFin*g.r1/(g.r1+g.r2);
+  const span=g.r1*0.55;
+  const q=Math.min(w,h)*0.88/(2*span);
+  const ox2=w*0.38, oy2=h*0.55;
+  const SX=x=>ox2+q*(x-r1p), SY=y=>oy2+q*y;
+
+  sctx.save();sctx.translate(ox2,oy2);sctx.scale(q,q);sctx.translate(-r1p,0);
+  const ms=MASK/viewScale;
+  sctx.beginPath();sctx.arc(r1p,0,g.ra1*1.02,0,7);sctx.clip();
+  sctx.drawImage(mat,-ms/2,-ms/2,ms,ms);
+  sctx.restore();
+
+  // 当前刀位
+  sctx.save();
+  sctx.translate(SX(g.aFin),SY(recip));sctx.rotate(thC);sctx.scale(q,q);
+  sctx.strokeStyle=cssVar('--accent');sctx.lineWidth=0.3;
+  sctx.fillStyle='rgba(77,163,255,0.10)';
+  sctx.fill(cutter);sctx.stroke(cutter);
+  sctx.restore();
+
+  // 本冲切削层 = 当前材料 ∩ 当前刀位(同样裁剪在毛坯圆内)
+  const tmp=document.createElement('canvas');tmp.width=w;tmp.height=h;
+  const tc=tmp.getContext('2d');
+  tc.setTransform(q,0,0,q,ox2-q*r1p,oy2);
+  tc.beginPath();tc.arc(r1p,0,g.ra1*1.02,0,7);tc.clip();
+  tc.drawImage(mat,-MASK/2/viewScale,-MASK/2/viewScale,MASK/viewScale,MASK/viewScale);
+  tc.globalCompositeOperation='source-in';
+  tc.translate(g.aFin,recip);tc.rotate(thC);
+  tc.fillStyle=cssVar('--chip');tc.fill(cutter);
+  sctx.globalAlpha=0.9;sctx.drawImage(tmp,0,0);sctx.globalAlpha=1;
+
+  // 啮合线
+  sctx.save();
+  sctx.strokeStyle='rgba(147,161,179,0.75)';sctx.setLineDash([4,4]);sctx.lineWidth=1;
+  const px=SX(r1p),py=SY(0);
+  sctx.beginPath();
+  sctx.moveTo(px-80,py+80*Math.tan(g.ap));
+  sctx.lineTo(px+80,py-80*Math.tan(g.ap));
+  sctx.stroke();sctx.setLineDash([]);
+  sctx.fillStyle=cssVar('--muted');sctx.font='11px sans-serif';
+  sctx.fillText('啮合线',px+36,py-36*Math.tan(g.ap)-6);
+  sctx.fillStyle=cssVar('--chip');sctx.font='bold 12px sans-serif';
+  sctx.fillText('橙色:当前包络层与已成形齿面间的切削层(间隙)',10,h-12);
+  sctx.restore();
+}
+
+/* ============ 读数 ============ */
+function updateReadouts(g){
+  const undercut=g.aFin<g.aCrit-1e-6;
+  const badge=$('oStatus');
+  if(undercut)badge.innerHTML='<span class="badge bad">根切</span>';
+  else if(S.feed<0.999)badge.innerHTML='<span class="badge warn">未到全齿深</span>';
+  else badge.innerHTML='<span class="badge ok">正常</span>';
+  $('oRatio').textContent=(S.z/S.z0).toFixed(4);
+  const dms=v=>((v*180/Math.PI)%360).toFixed(3)+'°';
+  $('oThW').textContent=dms(S.thetaW);
+  $('oThC').textContent=dms(-(S.z/S.z0)*S.thetaW);
+  $('oStep').textContent=(360/(S.z*S.n)).toFixed(3)+'°';
+  $('oA').textContent=g.aFin.toFixed(2)+' mm';
+  $('oAp').textContent=(g.ap*180/Math.PI).toFixed(3)+'°';
+  $('oAc').textContent=g.aCrit.toFixed(2)+' mm';
+  $('oTc').textContent=g.tCrit.toFixed(3)+(g.tCrit>F_MAX?' (＞量程)':g.tCrit<F_MIN?' (＜量程,浅切即根切)':'');
+  const pct=v=>((v-F_MIN)/(F_MAX-F_MIN)*100);
+  const tc=$('tickCrit');
+  if(g.tCrit>=F_MIN&&g.tCrit<=F_MAX){
+    tc.style.display='block';tc.style.left=pct(g.tCrit)+'%';
+    // 与全齿深刻度相距不足 6% 时,临界标签下沉一行
+    tc.classList.toggle('crowded', Math.abs(pct(g.tCrit)-pct(1.0))<9);
+  }
+  else tc.style.display='none';
+  $('tickNom').style.left=pct(1.0)+'%';
+  $('tickCritTxt').textContent='临界 '+g.tCrit.toFixed(2);
+}
+
+/* ============ 控件 ============ */
+function bindSlider(id,valId,fn){
+  const el=$(id);
+  el.addEventListener('input',()=>{fn(parseFloat(el.value));$(valId).textContent=el.value;queueRecompute();});
+}
+bindSlider('sZ','vZ',v=>S.z=v);
+bindSlider('sM','vM',v=>S.m=v);
+bindSlider('sA','vA',v=>S.alpha=v*Math.PI/180);
+bindSlider('sZ0','vZ0',v=>S.z0=v);
+bindSlider('sF','vF',v=>S.feed=v);
+$('cGhost').addEventListener('change',e=>{S.ghost=e.target.checked;render();});
+$('cSection').addEventListener('change',e=>{S.section=e.target.checked;inset.classList.toggle('hidden',!S.section);render();});
+$('cTheory').addEventListener('change',e=>{S.theory=e.target.checked;render();});
+
+$('btnPreset').addEventListener('click',()=>{
+  S.z=17;S.m=5;S.alpha=20*Math.PI/180;S.z0=20;
+  $('sZ').value=17;$('vZ').textContent='17';
+  $('sM').value=5;$('vM').textContent='5';
+  $('sA').value=20;$('vA').textContent='20';
+  $('sZ0').value=20;$('vZ0').textContent='20';
+  const g0=geom();
+  // 预置到临界刻度下一格:刚好不根切,再推一格(t+0.02)即越过 t* 看到根切
+  S.feed=Math.max(F_MIN,Math.min(F_MAX,Math.floor(g0.tCrit/STEP_F)*STEP_F));
+  $('sF').value=S.feed;$('vF').textContent=S.feed.toFixed(2);
+  queueRecompute();
+});
+$('btnReset').addEventListener('click',()=>{S.thetaW=0;S.playing=false;$('btnPlay').textContent='▶ 播放冲切';render();});
+$('btnStep').addEventListener('click',()=>stepStroke());
+$('btnPlay').addEventListener('click',()=>{
+  if(!S.playing){S.playing=true;startReplay();$('btnPlay').textContent='⏸ 暂停';}
+  else{S.playing=false;$('btnPlay').textContent='▶ 播放冲切';}
+});
+
+/* ============ 逐冲重放 ============ */
+function startReplay(){
+  replayCv=blankDisk();
+  S.k=0;S.strokePhase=0;S.thetaW=0;
+}
+function stepStroke(){
+  const g=geom();
+  if(!replayCv)startReplay();
+  if(S.k>=S.K){S.playing=false;$('btnPlay').textContent='▶ 播放冲切';return;}
+  const cutter=gearPath(S.z0,S.m,1.25,1.0,S.alpha);
+  const c=replayCv.getContext('2d');
+  const feedEnd=Math.floor(S.K*0.42);
+  const a=S.k<feedEnd?g.aStart-(g.aStart-g.aFin)*(S.k/feedEnd):g.aFin;
+  const thW=S.k*2*Math.PI/S.K;
+  S.thetaW=thW;
+  c.globalCompositeOperation='destination-out';
+  c.setTransform(viewScale,0,0,viewScale,viewC,viewC);
+  c.rotate(-thW);c.translate(a,0);c.rotate(-(S.z/S.z0)*thW);
+  c.fill(cutter);
+  c.setTransform(1,0,0,1,0,0);
+  S.k++;S.strokePhase=(S.strokePhase+0.5)%1;
+  render();updateReadouts(g);
+}
+setInterval(()=>{if(S.playing)stepStroke();},34);
+
+/* ============ 双向拖动,严格传动比 ============ */
+let drag=null;
+function evtPos(e){
+  const r=stage.getBoundingClientRect();
+  return {x:(e.clientX-r.left)*(W/r.width),y:(e.clientY-r.top)*(H/r.height)};
+}
+stage.addEventListener('pointerdown',e=>{
+  const g=geom(),{k,ox,oy}=viewFrame(g),p=evtPos(e);
+  const wC={x:ox,y:oy}, cC={x:ox+k*g.aFin,y:oy};
+  if(Math.hypot(p.x-wC.x,p.y-wC.y)<k*g.ra1*1.15)
+    drag={mode:'w',last:Math.atan2(p.y-wC.y,p.x-wC.x)};
+  else if(Math.hypot(p.x-cC.x,p.y-cC.y)<k*g.ra2*1.3)
+    drag={mode:'c',last:Math.atan2(p.y-cC.y,p.x-cC.x)};
+  else drag=null;
+  if(drag){try{stage.setPointerCapture(e.pointerId);}catch(_){}S.playing=false;$('btnPlay').textContent='▶ 播放冲切';}
+});
+stage.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  const g=geom(),{k,ox,oy}=viewFrame(g),p=evtPos(e);
+  const ctr=drag.mode==='w'?{x:ox,y:oy}:{x:ox+k*g.aFin,y:oy};
+  const sig=Math.atan2(p.y-ctr.y,p.x-ctr.x);
+  let d=sig-drag.last;
+  if(d>Math.PI)d-=2*Math.PI;if(d<-Math.PI)d+=2*Math.PI;
+  drag.last=sig;
+  // 屏幕角增量即几何角增量(均为顺时针正)
+  if(drag.mode==='w')S.thetaW+=d;
+  else{
+    // 刀体转角增量 d = Δθ₂ = −i·Δθ₁ → Δθ₁ = −d/i
+    S.thetaW-=d/(S.z/S.z0);
+  }
+  render();updateReadouts(g);
+});
+const endDrag=()=>drag=null;
+stage.addEventListener('pointerup',endDrag);
+stage.addEventListener('pointercancel',endDrag);
+
+/* ============ 自适应与启动 ============ */
+function resize(){
+  const r=stage.getBoundingClientRect();
+  W=stage.width=Math.max(640,Math.round(r.width));
+  H=stage.height=Math.round(W*0.64);
+  render();
+}
+window.addEventListener('resize',resize);
+resize();
+recompute();
+</script>
+</body>
+</html>
