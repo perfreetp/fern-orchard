@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>天气雷达回波拼图演示</title>
+<script src="https://cdn.jsdelivr.net/npm/konva@9.3.22/konva.min.js"></script>
+<style>
+  :root{
+    --bg:#eef1f5; --card:#ffffff; --ink:#1f2933; --sub:#667085; --line:#d7dde5;
+    --accent:#2563eb; --up:#dc2626; --down:#16a34a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.6 "Microsoft YaHei","PingFang SC","Segoe UI",sans-serif;}
+  header{padding:18px 22px 10px;}
+  header h1{margin:0;font-size:20px;}
+  header p{margin:4px 0 0;color:var(--sub);font-size:13px;}
+  .wrap{padding:8px 22px 26px;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;box-shadow:0 1px 3px rgba(16,24,40,.06);}
+  .stage-card{padding:12px;}
+  #map-host{width:960px;max-width:100%;}
+  #map-host canvas{max-width:100%;height:auto !important;border-radius:8px;}
+  .side{display:flex;flex-direction:column;gap:16px;flex:1;min-width:280px;max-width:340px;}
+  .card h2{margin:0 0 10px;font-size:14px;display:flex;align-items:center;gap:8px;}
+  .card h2 .tag{background:#eef2ff;color:#3949ab;font-size:11px;padding:1px 8px;border-radius:999px;}
+  .kv{display:grid;grid-template-columns:96px 1fr;gap:4px 8px;font-size:13px;margin-bottom:8px;}
+  .kv .k{color:var(--sub);}
+  .kv .v{font-weight:600;}
+  .trend-up{color:var(--up);font-weight:700;}
+  .trend-down{color:var(--down);font-weight:700;}
+  .trend-flat{color:var(--sub);}
+  .hint{color:var(--sub);font-size:12.5px;}
+  table.compare{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px;}
+  table.compare th,table.compare td{border:1px solid var(--line);padding:4px 6px;text-align:center;}
+  table.compare th{background:#f8fafc;color:var(--sub);font-weight:600;}
+  .legend-bins{display:flex;flex-direction:column;gap:5px;}
+  .legend-row{display:flex;align-items:center;gap:8px;font-size:12.5px;}
+  .legend-sw{width:22px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.15);}
+  .legend-range{color:var(--sub);width:88px;}
+  .timeline-card{width:100%;margin-top:16px;}
+  .tl-row{display:flex;align-items:center;gap:14px;}
+  #play-btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 16px;
+    cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;}
+  #play-btn:hover{background:#f0f5ff;}
+  input[type=range]{flex:1;accent-color:var(--accent);height:22px;}
+  .tl-marks{display:flex;justify-content:space-between;color:var(--sub);font-size:12px;margin-top:2px;
+    padding-left:78px;padding-right:6px;}
+  #time-label{font-variant-numeric:tabular-nums;font-weight:700;min-width:58px;text-align:center;
+    background:#f1f5ff;border-radius:8px;padding:5px 0;font-size:15px;}
+  .chart-card{width:100%;margin-top:16px;}
+  #chart-host{position:relative;width:100%;}
+  #prof-canvas{width:100%;display:block;border-radius:8px;background:#fcfcfd;border:1px solid #eef0f3;}
+  .note{font-size:12px;color:var(--sub);margin-top:8px;}
+  .pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;}
+  .empty{color:#98a2b3;font-size:13px;padding:14px 4px;text-align:center;}
+  footer{color:var(--sub);font-size:12px;padding:0 22px 24px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>天气雷达回波拼图 · 平流与剖面演示</h1>
+  <p>椭圆斑块表示回波单体，按 dBZ 强度分档着色（弱绿强红）；拖动时间轴观察回波带东移、强度演变与剖面峰值移动。数据为示意模拟数据。</p>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="card stage-card">
+      <div id="map-host"></div>
+    </div>
+
+    <div class="card timeline-card">
+      <div class="tl-row">
+        <button id="play-btn">▶ 播放</button>
+        <input id="time-slider" type="range" min="0" max="100" step="1" value="0">
+        <div id="time-label">08:00</div>
+      </div>
+      <div class="tl-marks"><span>T0 · 08:00</span><span>T1 · 09:00</span></div>
+      <div class="note">操作：拖动滑块（或播放）让回波带整体平流；在图上拖动剖面线两端的 A / B 手柄，下方曲线实时重算；单击任一斑块查看详情。</div>
+    </div>
+
+    <div class="card chart-card">
+      <h2><span class="tag">剖面</span>沿 A→B 剖面线的强度曲线（每点取最近斑块强度，按椭圆内归一化距离衰减插值）</h2>
+      <div id="chart-host"><canvas id="prof-canvas" height="220"></canvas></div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card">
+      <h2><span class="tag">斑块</span>单体详情与相邻时次对比</h2>
+      <div id="patch-info"><div class="empty">单击地图上的椭圆斑块<br>查看强度、面积与移动方向</div></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="tag">实况</span>强中心跟踪</h2>
+      <div class="kv"><span class="k">最强强度</span><span class="v" id="sc-v">-- dBZ</span></div>
+      <div class="kv"><span class="k">所属档位</span><span class="v" id="sc-bin">--</span></div>
+      <div class="kv"><span class="k">较 T0 东移</span><span class="v" id="sc-shift">-- km</span></div>
+      <div class="kv"><span class="k">平流方向</span><span class="v" id="sc-dir">85°（东略偏北）</span></div>
+      <div class="kv"><span class="k">平流速度</span><span class="v">30.1 km/h（约 8.4 m/s）</span></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="tag">图例</span>强度分档（dBZ）</h2>
+      <div class="legend-bins" id="legend-bins"></div>
+      <div class="note">所有斑块使用同一分档标准与同一平流矢量，仅形状被简化为椭圆。</div>
+    </div>
+  </div>
+</div>
+
+<footer>提示：剖面曲线峰值位置即回波带与剖面线的交点；随着时间轴推进，强回波带扫过剖面线，峰值自左向右迁移，同时峰值颜色对应的档位由绿转红。</footer>
+
+<script>
+"use strict";
+/* ============ 1. 强度分档（弱回波偏绿，强回波偏红） ============ */
+const BINS = [
+  {lo:10, hi:25, name:"弱回波",        color:"#35c76b", edge:"#bff3d2"},
+  {lo:25, hi:35, name:"较弱回波",      color:"#b5e04b", edge:"#e6f6c2"},
+  {lo:35, hi:45, name:"中等回波",      color:"#f7d44c", edge:"#fdeeb8"},
+  {lo:45, hi:55, name:"强回波",        color:"#f5873b", edge:"#fcd3b2"},
+  {lo:55, hi:65, name:"很强回波",      color:"#e5483c", edge:"#f7bcb6"},
+  {lo:65, hi:80, name:"极强回波",      color:"#9e1b32", edge:"#d9a3ae"}
+];
+function binOf(v){
+  for(const b of BINS){ if(v >= b.lo && v < b.hi) return b; }
+  return v < BINS[0].lo ? BINS[0] : BINS[BINS.length-1];
+}
+function shade(hex, f){ // 颜色明暗调整
+  const n = parseInt(hex.slice(1),16);
+  let r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+  r=Math.round(Math.min(255,Math.max(0,r*f)));
+  g=Math.round(Math.min(255,Math.max(0,g*f)));
+  b=Math.round(Math.min(255,Math.max(0,b*f)));
+  return `rgb(${r},${g},${b})`;
+}
+
+/* ============ 2. 两个时次的椭圆斑块数据（像素坐标，1 px = 0.1 km） ============ */
+// 平流矢量：所有斑块一致，dx=300 px(30 km)、dy=25 px(2.5 km)，方位角约 85°
+const ADV = {dx:300, dy:25};
+// 主回波带：T0 沿 NW-SE 排列的 7 个单体（近似南北向飑线），T1 整体东移并增强
+const bandT0 = [
+  {id:"A1", x:230, y:100, rx:40, ry:24, rot:74, v:20},
+  {id:"A2", x:247, y:170, rx:46, ry:27, rot:76, v:26},
+  {id:"A3", x:263, y:235, rx:52, ry:30, rot:78, v:33},
+  {id:"A4", x:280, y:305, rx:56, ry:33, rot:76, v:38},  // 强中心
+  {id:"A5", x:297, y:374, rx:52, ry:30, rot:74, v:33},
+  {id:"A6", x:313, y:443, rx:46, ry:27, rot:77, v:27},
+  {id:"A7", x:330, y:510, rx:40, ry:24, rot:75, v:21}
+];
+// 外围分散弱回波
+const scatT0 = [
+  {id:"B1", x:110, y:480, rx:32, ry:19, rot:25, v:14},
+  {id:"B2", x:600, y:140, rx:28, ry:17, rot:-20, v:12},
+  {id:"B3", x:90,  y:150, rx:26, ry:16, rot:10, v:10}
+];
+// T1：位置 = T0 + 平流矢量；半径缓慢增大；强度整体增强（绿转红）
+const T1_CHANGE = {
+  A1:{rs:1.07, v:34}, A2:{rs:1.08, v:42}, A3:{rs:1.09, v:50},
+  A4:{rs:1.10, v:58}, A5:{rs:1.08, v:52}, A6:{rs:1.07, v:43}, A7:{rs:1.06, v:33},
+  B1:{rs:1.10, v:22}, B2:{rs:1.08, v:17}, B3:{rs:1.09, v:16}
+};
+const T0 = bandT0.concat(scatT0);
+const T1 = T0.map(p=>{
+  const c = T1_CHANGE[p.id];
+  return {id:p.id, x:p.x+ADV.dx, y:p.y+ADV.dy, rx:p.rx*c.rs, ry:p.ry*c.rs, rot:p.rot, v:c.v};
+});
+const PX_KM = 0.1;
+const lerp = (a,b,t)=>a+(b-a)*t;
+function stateAt(t){ // t∈[0,1] 线性插值
+  return T0.map((p,i)=>{
+    const q=T1[i];
+    return {id:p.id,
+      x:lerp(p.x,q.x,t), y:lerp(p.y,q.y,t),
+      rx:lerp(p.rx,q.rx,t), ry:lerp(p.ry,q.ry,t),
+      rot:lerp(p.rot,q.rot,t), v:lerp(p.v,q.v,t)};
+  });
+}
+
+/* ============ 3. Konva 舞台与底图（简化行政区轮廓） ============ */
+const W=960, H=600;
+const stage = new Konva.Stage({container:"map-host", width:W, height:H});
+const baseLayer = new Konva.Layer();
+const echoLayer = new Konva.Layer();
+const profLayer = new Konva.Layer();
+stage.add(baseLayer, echoLayer, profLayer);
+
+// 五个虚构行政区，闭合多边形无缝拼接
+const DISTRICTS = [
+  {name:"岭西区", pts:[0,0, 430,0, 415,180, 360,300, 0,320], lx:180, ly:140},
+  {name:"江北区", pts:[0,320, 360,300, 430,430, 380,H, 0,H], lx:160, ly:460},
+  {name:"云川市", pts:[360,300, 415,180, 560,250, 430,430], lx:445, ly:292},
+  {name:"东岚区", pts:[430,0, W,0, W,280, 700,300, 560,250, 415,180], lx:720, ly:130},
+  {name:"临港市", pts:[560,250, 700,300, W,280, W,H, 380,H, 430,430], lx:700, ly:470}
+];
+DISTRICTS.forEach(d=>{
+  baseLayer.add(new Konva.Line({
+    points:d.pts, closed:true, fill:"#f4f1e8", stroke:"#9a9486", strokeWidth:1.4
+  }));
+  baseLayer.add(new Konva.Text({
+    x:d.lx, y:d.ly, text:d.name, fontSize:15, fontStyle:"bold",
+    fill:"#9b948a", opacity:.85
+  }));
+});
+// 示意河流
+baseLayer.add(new Konva.Line({
+  points:[0,262, 180,242, 320,328, 480,300, 640,272, 780,330, W,308],
+  bezier:true, stroke:"#7db6e8", strokeWidth:3, opacity:.75, listening:false
+}));
+// 指北针
+baseLayer.add(new Konva.Arrow({
+  points:[918,82, 918,42], pointerLength:9, pointerWidth:9,
+  stroke:"#52606d", fill:"#52606d", strokeWidth:2, listening:false
+}));
+baseLayer.add(new Konva.Text({x:910,y:84,text:"北",fontSize:13,fill:"#52606d",listening:false}));
+// 比例尺（100 px = 10 km）
+baseLayer.add(new Konva.Line({points:[40,565, 140,565],stroke:"#52606d",strokeWidth:2,listening:false}));
+baseLayer.add(new Konva.Line({points:[40,560, 40,570],stroke:"#52606d",strokeWidth:2,listening:false}));
+baseLayer.add(new Konva.Line({points:[140,560, 140,570],stroke:"#52606d",strokeWidth:2,listening:false}));
+baseLayer.add(new Konva.Text({x:58,y:570,text:"10 km",fontSize:12,fill:"#52606d",listening:false}));
+// 平流方向箭头
+baseLayer.add(new Konva.Arrow({
+  points:[58,96, 132,90], pointerLength:10, pointerWidth:9,
+  stroke:"#b45309", fill:"#b45309", strokeWidth:2.2, listening:false
+}));
+baseLayer.add(new Konva.Text({
+  x:44,y:102,text:"平流方向 85°（东略偏北）",fontSize:12,
+  fill:"#b45309", fontStyle:"bold", listening:false
+}));
+
+/* ============ 4. 回波斑块节点（创建一次，逐帧更新） ============ */
+const echoNodes = T0.map(p=>{
+  const grp = new Konva.Group();
+  const ell = new Konva.Ellipse({opacity:.9});
+  const txt = new Konva.Text({
+    fontStyle:"bold", fontSize:11, fill:"#1f2933",
+    align:"center", verticalAlign:"middle", listening:false
+  });
+  grp.add(ell, txt);
+  grp.on("click", e=>{ e.cancelBubble=true; selectPatch(p.id); });
+  grp.on("mouseenter", ()=>{ stage.container().style.cursor="pointer"; });
+  grp.on("mouseleave", ()=>{ stage.container().style.cursor="default"; });
+  echoLayer.add(grp);
+  return {id:p.id, grp, ell, txt};
+});
+// 选中高亮环
+const selRing = new Konva.Ellipse({
+  stroke:"#facc15", strokeWidth:2.6, dash:[7,5], fill:"transparent",
+  listening:false, visible:false
+});
+echoLayer.add(selRing);
+
+function renderEchoes(patches){
+  patches.forEach((p,i)=>{
+    const n = echoNodes[i];
+    const bin = binOf(p.v);
+    n.grp.position({x:p.x, y:p.y});
+    n.ell.radius({x:p.rx, y:p.ry});
+    n.ell.rotation(p.rot);
+    n.ell.fillRadialGradientStartPoint({x:0,y:0});
+    n.ell.fillRadialGradientEndPoint({x:0,y:0});
+    n.ell.fillRadialGradientStartRadius(0);
+    n.ell.fillRadialGradientEndRadius(Math.max(p.rx,p.ry));
+    n.ell.fillRadialGradientColorStops([0, shade(bin.color,.82), .7, bin.color, 1, bin.edge]);
+    n.ell.stroke("rgba(255,255,255,.85)");
+    n.ell.strokeWidth(1.1);
+    n.txt.text(Math.round(p.v));
+    n.txt.offsetX(n.txt.width()/2);
+    n.txt.offsetY(n.txt.height()/2);
+    n.txt.rotation(p.rot);
+  });
+  if(selectedId){
+    const p = patches.find(q=>q.id===selectedId);
+    if(p){ selRing.visible(true).position({x:p.x,y:p.y}).radius({x:p.rx+5,y:p.ry+5}).rotation(p.rot); }
+  } else selRing.visible(false);
+  echoLayer.batchDraw();
+}
+
+/* ============ 5. 可拖动剖面线 A-B ============ */
+let endA = {x:160, y:340}, endB = {x:680, y:340};
+const profLine = new Konva.Line({
+  points:[endA.x,endA.y,endB.x,endB.y],
+  stroke:"#1d4ed8", strokeWidth:2, dash:[9,6], listening:false
+});
+const peakMarker = new Konva.Circle({
+  radius:5, fill:"#111827", stroke:"#fff", strokeWidth:1.5, listening:false, visible:false
+});
+function makeHandle(pos, label){
+  const g = new Konva.Group({x:pos.x, y:pos.y, draggable:true});
+  const c = new Konva.Circle({radius:9, fill:"#fff", stroke:"#1d4ed8", strokeWidth:2.5});
+  const t = new Konva.Text({
+    text:label, fontSize:11, fontStyle:"bold", fill:"#1d4ed8",
+    align:"center", verticalAlign:"middle", listening:false
+  });
+  t.offsetX(t.width()/2); t.offsetY(t.height()/2);
+  g.add(c,t);
+  g.dragBoundFunc(p=>({x:Math.min(W-8,Math.max(8,p.x)), y:Math.min(H-8,Math.max(8,p.y))}));
+  g.on("dragmove", ()=>{ pos.x=g.x(); pos.y=g.y(); refresh(); });
+  return g;
+}
+const handleA = makeHandle(endA,"A");
+const handleB = makeHandle(endB,"B");
+profLayer.add(profLine, peakMarker, handleA, handleB);
+stage.on("click", e=>{ if(e.target===stage) selectPatch(null); });
+
+/* ============ 6. 剖面采样：每点取最近斑块，按椭圆归一化距离衰减 ============ */
+function normDist(x,y,p){
+  const a = (p.rot||0)*Math.PI/180, cs=Math.cos(a), sn=Math.sin(a);
+  const dx=x-p.x, dy=y-p.y;
+  const lx = cs*dx + sn*dy, ly = -sn*dx + cs*dy;
+  return Math.sqrt((lx*lx)/(p.rx*p.rx) + (ly*ly)/(p.ry*p.ry));
+}
+function sampleAt(x,y,patches){
+  let best=null, bestNd=Infinity;
+  for(const p of patches){
+    const nd = normDist(x,y,p);
+    if(nd<bestNd){ bestNd=nd; best=p; }
+  }
+  if(!best) return {v:0, patch:null};
+  const f = bestNd<=1 ? 1-0.8*bestNd*bestNd : 0.2*Math.exp(-(bestNd-1)*1.8);
+  return {v:best.v*f, patch:best};
+}
+const N_SAMP = 160;
+function profileSamples(patches){
+  const len = Math.hypot(endB.x-endA.x, endB.y-endA.y);
+  const out=[];
+  for(let i=0;i<=N_SAMP;i++){
+    const u=i/N_SAMP;
+    const x=lerp(endA.x,endB.x,u), y=lerp(endA.y,endB.y,u);
+    const s=sampleAt(x,y,patches);
+    out.push({u, d:u*len*PX_KM, v:s.v, patch:s.patch});
+  }
+  return out;
+}
+
+/* ============ 7. 剖面曲线绘制 ============ */
+const canvas=document.getElementById("prof-canvas");
+const ctx=canvas.getContext("2d");
+function resizeCanvas(){
+  const w=canvas.parentElement.clientWidth;
+  const dpr=window.devicePixelRatio||1;
+  canvas.style.height="220px";
+  canvas.width=Math.round(w*dpr); canvas.height=220*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+function drawChart(samples){
+  const w=canvas.clientWidth, h=220;
+  const M={l:58,r:22,t:16,b:36};
+  const iw=w-M.l-M.r, ih=h-M.t-M.b;
+  const dMax=Math.max(samples[samples.length-1].d, 0.01); // A、B 重合时防除零
+  const xS=d=>M.l+(d/dMax)*iw;
+  const yS=v=>M.t+ih-(v/70)*ih;
+  ctx.clearRect(0,0,w,h);
+  // 网格 + 坐标
+  ctx.font="11px sans-serif"; ctx.textAlign="right"; ctx.textBaseline="middle";
+  for(let g=0; g<=70; g+=10){
+    ctx.strokeStyle=g%20===0?"#e6e9ef":"#f1f3f7";
+    ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(M.l,yS(g)); ctx.lineTo(w-M.r,yS(g)); ctx.stroke();
+    ctx.fillStyle="#7b8493"; ctx.fillText(g, M.l-8, yS(g));
+  }
+  ctx.textAlign="center"; ctx.textBaseline="top";
+  for(let k=0;k<=5;k++){
+    const d=dMax*k/5;
+    ctx.fillStyle="#7b8493";
+    ctx.fillText(d.toFixed(1), xS(d), h-M.b+7);
+  }
+  ctx.save();
+  ctx.translate(15,M.t+ih/2); ctx.rotate(-Math.PI/2);
+  ctx.textAlign="center"; ctx.fillStyle="#52606d"; ctx.fillText("强度 (dBZ)",0,0);
+  ctx.restore();
+  ctx.textAlign="center"; ctx.fillText("距 A 端距离 (km)", M.l+iw/2, h-12);
+  // 填充
+  ctx.beginPath();
+  ctx.moveTo(xS(0),yS(0));
+  samples.forEach(s=>ctx.lineTo(xS(s.d), yS(s.v)));
+  ctx.lineTo(xS(dMax),yS(0)); ctx.closePath();
+  ctx.fillStyle="rgba(229,72,60,.08)"; ctx.fill();
+  // 按强度分档着色的折线
+  for(let i=1;i<samples.length;i++){
+    const a=samples[i-1], b=samples[i];
+    ctx.beginPath();
+    ctx.moveTo(xS(a.d),yS(a.v)); ctx.lineTo(xS(b.d),yS(b.v));
+    ctx.strokeStyle = b.v>5 ? binOf(b.v).color : "#c3cad4";
+    ctx.lineWidth=2; ctx.stroke();
+  }
+  // 峰值标注
+  let peak=samples[0];
+  samples.forEach(s=>{ if(s.v>peak.v) peak=s; });
+  if(peak.v>3){
+    const px=xS(peak.d), py=yS(peak.v);
+    ctx.setLineDash([4,4]);
+    ctx.strokeStyle="#98a2b3"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(px,M.t); ctx.lineTo(px,h-M.b); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(px,py,4.5,0,Math.PI*2);
+    ctx.fillStyle="#111827"; ctx.fill();
+    ctx.fillStyle="#1f2933"; ctx.font="bold 12px sans-serif";
+    ctx.textAlign="left"; ctx.textBaseline="bottom";
+    const label=`峰值 ${peak.v.toFixed(0)} dBZ @ ${peak.d.toFixed(1)} km`;
+    ctx.fillText(label, Math.min(px+8, w-M.r-150), Math.max(py-4, M.t+12));
+    // 地图上的峰值位置
+    peakMarker.visible(true);
+    peakMarker.position({x:lerp(endA.x,endB.x,peak.u), y:lerp(endA.y,endB.y,peak.u)});
+  } else {
+    peakMarker.visible(false);
+  }
+  profLayer.batchDraw();
+}
+
+/* ============ 8. 斑块信息面板 ============ */
+let selectedId=null;
+function selectPatch(id){
+  selectedId=id;
+  refresh();
+}
+function azName(az){
+  const names=["北","东北","东","东南","南","西南","西","西北"];
+  return names[Math.round(az/45)%8];
+}
+function renderInfo(patches, t){
+  const el=document.getElementById("patch-info");
+  if(!selectedId){
+    el.innerHTML='<div class="empty">单击地图上的椭圆斑块<br>查看强度、面积与移动方向</div>';
+    return;
+  }
+  const cur=patches.find(p=>p.id===selectedId);
+  const i=T0.findIndex(p=>p.id===selectedId);
+  const p0=T0[i], p1=T1[i];
+  const area=Math.PI*cur.rx*cur.ry*PX_KM*PX_KM;
+  const dV0=cur.v-p0.v, dV1=cur.v-p1.v;
+  const trend = dV0>0.5 ? ["增强","trend-up","▲"] : dV0<-0.5 ? ["减弱","trend-down","▼"] : ["持平","trend-flat","—"];
+  const az = (90 - Math.atan2(ADV.dy,ADV.dx)*180/Math.PI + 360)%360;
+  el.innerHTML = `
+    <div class="kv">
+      <span class="k">斑块编号</span><span class="v">${cur.id}</span>
+      <span class="k">当前强度</span><span class="v">${cur.v.toFixed(1)} dBZ
+        <span class="pill" style="background:${binOf(cur.v).color};color:${cur.v>=35?'#1f2933':'#fff'}">${binOf(cur.v).name}</span></span>
+      <span class="k">椭圆面积</span><span class="v">${area.toFixed(1)} km²</span>
+      <span class="k">移动方向</span><span class="v">${az.toFixed(0)}°（${azName(az)}，全斑块一致）</span>
+      <span class="k">演变趋势</span><span class="v ${trend[1]}">${trend[2]} 较 T0 ${trend[0]} ${Math.abs(dV0).toFixed(1)} dBZ</span>
+    </div>
+    <table class="compare">
+      <tr><th>时刻</th><th>T0 08:00</th><th>当前 ${fmtTime(t)}</th><th>T1 09:00</th></tr>
+      <tr><th>强度 dBZ</th>
+        <td>${p0.v}</td><td><b>${cur.v.toFixed(1)}</b></td><td>${p1.v}</td></tr>
+      <tr><th>面积 km²</th>
+        <td>${(Math.PI*p0.rx*p0.ry*PX_KM*PX_KM).toFixed(1)}</td>
+        <td><b>${area.toFixed(1)}</b></td>
+        <td>${(Math.PI*p1.rx*p1.ry*PX_KM*PX_KM).toFixed(1)}</td></tr>
+      <tr><th>档位</th>
+        <td style="color:${binOf(p0.v).color};font-weight:700">${binOf(p0.v).name}</td>
+        <td style="color:${binOf(cur.v).color};font-weight:700">${binOf(cur.v).name}</td>
+        <td style="color:${binOf(p1.v).color};font-weight:700">${binOf(p1.v).name}</td></tr>
+    </table>
+    <div class="note" style="margin-top:8px">
+      相对 T1：${dV1<-0.5? "仍差 "+(-dV1).toFixed(1)+" dBZ 达到 T1 强度" : dV1>0.5? "已超过 T1 强度 "+dV1.toFixed(1)+" dBZ" : "与 T1 持平"}；
+      位置随统一平流矢量东移，形状（半径）随时间缓慢变化。
+    </div>`;
+}
+
+/* ============ 9. 强中心跟踪 & 时间轴 ============ */
+function fmtTime(t){
+  const mins=8*60 + t*60;
+  return `${String(Math.floor(mins/60)).padStart(2,"0")}:${String(mins%60).padStart(2,"0")}`;
+}
+function renderStrongCenter(patches){
+  let sc=patches[0];
+  patches.forEach(p=>{ if(p.v>sc.v) sc=p; });
+  const i=T0.findIndex(p=>p.id===sc.id);
+  const shiftKm=(sc.x-T0[i].x)*PX_KM;
+  document.getElementById("sc-v").textContent=sc.v.toFixed(1)+" dBZ";
+  const bin=binOf(sc.v);
+  document.getElementById("sc-bin").innerHTML=
+    `<span class="pill" style="background:${bin.color};color:${sc.v>=35?'#1f2933':'#fff'}">${bin.name}</span>`;
+  document.getElementById("sc-shift").textContent=shiftKm.toFixed(1)+" km";
+}
+// 图例
+document.getElementById("legend-bins").innerHTML = BINS.map(b=>
+  `<div class="legend-row">
+     <span class="legend-sw" style="background:${b.color}"></span>
+     <span>${b.name}</span><span class="legend-range">${b.lo}–${b.hi} dBZ</span>
+   </div>`).join("");
+
+const slider=document.getElementById("time-slider");
+const timeLabel=document.getElementById("time-label");
+const playBtn=document.getElementById("play-btn");
+let playing=false, rafId=null;
+function refresh(){
+  const t=Number(slider.value)/100;
+  const patches=stateAt(t);
+  renderEchoes(patches);
+  profLine.points([endA.x,endA.y,endB.x,endB.y]);
+  drawChart(profileSamples(patches));
+  renderInfo(patches,t);
+  renderStrongCenter(patches);
+  timeLabel.textContent=fmtTime(t);
+}
+slider.addEventListener("input", ()=>{ if(playing) togglePlay(false); refresh(); });
+function togglePlay(force){
+  playing = force===undefined ? !playing : force;
+  playBtn.textContent = playing ? "⏸ 暂停" : "▶ 播放";
+  if(playing){
+    let last=performance.now();
+    const step=now=>{
+      if(!playing) return;
+      const dt=now-last; last=now;
+      let v=Number(slider.value)+ dt/60; // 6 秒扫完一个周期
+      if(v>100) v=0;
+      slider.value=v; refresh();
+      rafId=requestAnimationFrame(step);
+    };
+    rafId=requestAnimationFrame(step);
+  } else if(rafId){ cancelAnimationFrame(rafId); }
+}
+playBtn.addEventListener("click", ()=>togglePlay());
+
+window.addEventListener("resize", ()=>{ resizeCanvas(); refresh(); });
+resizeCanvas();
+refresh();
+</script>
+</body>
+</html>
