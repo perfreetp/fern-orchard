@@ -1,0 +1,595 @@
+<title>容积率 · 日照间距 · 视线遮挡推演</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  :root{
+    --bg:#0f172a; --panel:#111c33; --panel2:#16233f; --line:#243352;
+    --fg:#e6edf7; --muted:#8fa3c0; --accent:#38bdf8; --ok:#4ade80;
+    --warn:#ef4444; --orange:#f97316; --pink:#ec4899; --purple:#a855f7;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;color:var(--fg);font-size:13px}
+  #app{position:fixed;inset:0}
+  #app canvas{display:block}
+  .label{font-size:10px;color:#dce7f5;background:rgba(15,23,42,.72);border:1px solid #334564;
+    padding:1px 5px;border-radius:4px;white-space:nowrap;pointer-events:none;text-align:center;line-height:1.35}
+  .label.obs{background:#0c4a6e;border-color:#38bdf8;color:#e0f2fe;font-weight:700}
+  .label.cnt{background:#7c2d12;border-color:#f97316;color:#ffedd5;font-weight:700}
+  .label.cnt2{background:#831843;border-color:#ec4899;color:#fce7f3;font-weight:700}
+  .label.cntb{background:#7f1d1d;border-color:#ef4444;color:#fee2e2;font-weight:700}
+
+  #panel{position:fixed;top:12px;left:12px;width:330px;max-height:calc(100vh - 24px);overflow-y:auto;
+    background:rgba(17,28,51,.92);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:12px;
+    padding:14px 14px 12px;z-index:10;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+  #panel h1{font-size:15px;margin:0 0 2px;letter-spacing:.5px}
+  #panel .sub{color:var(--muted);font-size:11px;margin-bottom:10px}
+  .sec{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+  .sec h2{font-size:12px;color:var(--accent);margin:0 0 8px;font-weight:700;letter-spacing:1px}
+  .row{display:flex;justify-content:space-between;gap:8px;padding:2.5px 0}
+  .row .k{color:var(--muted)}
+  .row .v{font-variant-numeric:tabular-nums;text-align:right}
+  .v.bad{color:var(--warn);font-weight:700}
+  .v.good{color:var(--ok)}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .tick{position:relative;height:16px;margin-top:-2px}
+  .tickmark{position:absolute;top:0;width:2px;height:12px;background:var(--orange);transform:translateX(-1px)}
+  .tickmark span{position:absolute;top:13px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--orange);white-space:nowrap}
+  button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:7px;
+    padding:6px 9px;font-size:12px;cursor:pointer;margin:3px 4px 0 0}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button.on{background:#0c4a6e;border-color:var(--accent);color:#e0f2fe}
+  .btns{display:flex;flex-wrap:wrap;margin-top:2px}
+  #banner{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:9;display:none;
+    background:rgba(127,29,29,.92);border:1px solid #ef4444;color:#fee2e2;padding:10px 18px;border-radius:10px;
+    font-weight:700;box-shadow:0 8px 26px rgba(239,68,68,.35);max-width:60vw;text-align:center}
+  #banner small{display:block;font-weight:400;margin-top:3px;font-size:11px;color:#fecaca}
+  #legend{position:fixed;right:12px;bottom:12px;z-index:10;background:rgba(17,28,51,.9);border:1px solid var(--line);
+    border-radius:10px;padding:10px 12px;font-size:11px;line-height:1.9}
+  .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+  #occlist{max-height:150px;overflow-y:auto;margin-top:6px}
+  .ocrow{display:flex;justify-content:space-between;padding:3px 7px;border-radius:6px;cursor:default;font-size:11.5px}
+  .ocrow:hover{background:var(--panel2)}
+  .ocrow .tag{font-variant-numeric:tabular-nums;color:var(--orange);font-weight:700}
+  .cmp{display:flex;gap:8px}
+  .cmp .card{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:11px}
+  .cmp .card h3{margin:0 0 6px;font-size:11.5px}
+  .cmp .big{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+  canvas#sec{width:100%;height:170px;background:#0b1426;border:1px solid var(--line);border-radius:8px;margin-top:4px}
+  .hint{color:var(--muted);font-size:11px;line-height:1.6;margin-top:8px}
+  ::-webkit-scrollbar{width:7px}::-webkit-scrollbar-thumb{background:#2b3d5f;border-radius:4px}
+  @media (max-width:760px){ #panel{width:calc(100vw - 24px)} #legend{display:none} }
+</style>
+
+<div id="app"></div>
+
+<div id="banner"></div>
+
+<div id="panel">
+  <h1>容积率 · 日照间距 · 视线遮挡推演</h1>
+  <div class="sub">用地 120m × 80m（9600㎡）｜18 个长方体块｜日照间距系数 k=1.0（简化）</div>
+
+  <div class="sec" style="border-top:none;padding-top:0;margin-top:0">
+    <h2>容积率控制</h2>
+    <div class="row"><span class="k">容积率 FAR</span><span class="v" id="s-far">—</span></div>
+    <input id="slider" type="range" min="0.6" max="3.0" step="0.01" value="1.0">
+    <div class="tick"><div class="tickmark" id="tick"><span id="tick-txt"></span></div></div>
+    <div class="btns">
+      <button id="btn-crit">跳转临界容积率</button>
+      <button id="btn-mode">切换：双点对照</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>布局指标（随滑块重排）</h2>
+    <div class="row"><span class="k">总建筑面积 GFA</span><span class="v" id="s-gfa">—</span></div>
+    <div class="row"><span class="k">建筑密度（基底覆盖率）</span><span class="v" id="s-cov">—</span></div>
+    <div class="row"><span class="k">单块面宽 / 高度</span><span class="v" id="s-wh">—</span></div>
+    <div class="row"><span class="k">平均层数</span><span class="v" id="s-floors">—</span></div>
+    <div class="row"><span class="k">南北实际间距 D</span><span class="v" id="s-dact">—</span></div>
+    <div class="row"><span class="k">日照要求间距 k·h</span><span class="v" id="s-dreq">—</span></div>
+    <div class="row"><span class="k">红线最小退线</span><span class="v" id="s-setback">—</span></div>
+    <div class="row"><span class="k">间距校核</span><span class="v" id="s-status">—</span></div>
+  </div>
+
+  <div class="sec">
+    <h2>南向日照剖面（示意）</h2>
+    <canvas id="sec" width="620" height="340"></canvas>
+  </div>
+
+  <div class="sec" id="sec-single">
+    <h2>视线遮挡分析（单点）</h2>
+    <div class="row"><span class="k">观察点</span><span class="v" id="o-name">—</span></div>
+    <div class="row"><span class="k">视线总数 / 被遮挡</span><span class="v" id="o-stat">—</span></div>
+    <div id="occlist"></div>
+  </div>
+
+  <div class="sec" id="sec-cmp" style="display:none">
+    <h2>两侧对照观察点（同一容积率）</h2>
+    <div class="cmp">
+      <div class="card" style="border-color:#38bdf8">
+        <h3 style="color:#7dd3fc">西侧观察点 R1-C1</h3>
+        <div class="big" id="w-rate" style="color:#7dd3fc">—</div>
+        <div id="w-detail" style="color:var(--muted);margin-top:4px"></div>
+      </div>
+      <div class="card" style="border-color:#e879f9">
+        <h3 style="color:#f0abfc">东侧观察点 R1-C6</h3>
+        <div class="big" id="e-rate" style="color:#f0abfc">—</div>
+        <div id="e-detail" style="color:var(--muted);margin-top:4px"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:6px"><span class="k">两侧遮挡率差值</span><span class="v" id="cmp-diff">—</span></div>
+    <div class="hint" id="cmp-note"></div>
+  </div>
+
+  <div class="sec">
+    <h2>视角</h2>
+    <div class="btns">
+      <button id="v-bird" class="on">鸟瞰</button>
+      <button id="v-south">南向平视</button>
+      <button id="v-side">侧视剖面</button>
+    </div>
+    <div class="hint">
+      ① 拖动滑块：高度↑、面宽↑、间距↓，鸟瞰密度增大；② 点击任意体块设为观察点，视线拉向北侧场地边缘，
+      红色段即被遮挡段落，橙色体块为对应遮挡者（悬停可逐条对应）；③ 超过临界容积率后排开始遮挡前排并弹出警示。
+    </div>
+  </div>
+</div>
+
+<div id="legend">
+  <div><span class="sw" style="background:#38bdf8"></span>观察点体块</div>
+  <div><span class="sw" style="background:#f97316"></span>遮挡体块（单点 / 西侧视线）</div>
+  <div><span class="sw" style="background:#ec4899"></span>仅遮挡东侧视线</div>
+  <div><span class="sw" style="background:#ef4444"></span>两侧视线均被其遮挡</div>
+  <div><span class="sw" style="background:#4ade80"></span>无遮挡视线段</div>
+  <div><span class="sw" style="background:#ef4444"></span>被遮挡视线段</div>
+  <div><span class="sw" style="background:#facc15"></span>悬停高亮对应关系</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+<script>
+(function(){
+  "use strict";
+  // ---------- 常量与布局引擎 ----------
+  const SITE_W=120, SITE_D=80, COLS=6, ROWS=3, N=COLS*ROWS;
+  const PITCH_X=20, PITCH_Z=26, K=1.0, FLOOR_H=3, SITE_A=SITE_W*SITE_D;
+  const F_MIN=0.6, F_MAX=3.0;
+  const ROW_OFFSET=[0, 10, -10];                 // 错位布置，制造东西侧差异
+  const COL_X=i=>-50+i*PITCH_X;                  // -50..50
+  const ROW_Z=r=>-26+r*PITCH_Z;                  // -26,0,26（南→北）
+  const wAt=f=>11+(f-F_MIN)/(F_MAX-F_MIN)*4;     // 面宽 11→15
+  function hAt(f,w){ const gfa=f*SITE_A, per=gfa/N; return FLOOR_H*per/(w*w); }
+  function critFAR(){ // 二分求 D_act == D_req 的临界容积率
+    let lo=F_MIN, hi=F_MAX;
+    const gap=f=>PITCH_Z-wAt(f);
+    const req=f=>K*hAt(f,wAt(f));
+    if(gap(hi)>req(hi)) return null;
+    for(let i=0;i<60;i++){ const m=(lo+hi)/2; if(gap(m)<req(m)) hi=m; else lo=m; }
+    return (lo+hi)/2;
+  }
+  const F_CRIT=critFAR();
+
+  // ---------- 渲染基础 ----------
+  const app=document.getElementById("app");
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x0f172a);
+  scene.fog=new THREE.Fog(0x0f172a,180,360);
+  const camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,0.1,1000);
+  camera.position.set(95,100,115);
+  const renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  app.appendChild(renderer.domElement);
+  const labelRenderer=new THREE.CSS2DRenderer();
+  labelRenderer.setSize(innerWidth,innerHeight);
+  labelRenderer.domElement.style.position="absolute";
+  labelRenderer.domElement.style.top="0"; labelRenderer.domElement.style.pointerEvents="none";
+  app.appendChild(labelRenderer.domElement);
+  const controls=new THREE.OrbitControls(camera,renderer.domElement);
+  controls.target.set(0,4,0); controls.maxPolarAngle=Math.PI/2.05;
+  controls.minDistance=25; controls.maxDistance=320;
+
+  scene.add(new THREE.HemisphereLight(0xbcd6ff,0x1c2735,0.75));
+  const sun=new THREE.DirectionalLight(0xfff2d8,1.15);   // 太阳自南侧照射
+  sun.position.set(45,70,-80);
+  sun.castShadow=true;
+  sun.shadow.mapSize.set(2048,2048);
+  Object.assign(sun.shadow.camera,{left:-90,right:90,top:90,bottom:-90,near:1,far:260});
+  scene.add(sun);
+  scene.add(new THREE.AmbientLight(0xffffff,0.18));
+
+  // 场地与红线
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(400,400),
+    new THREE.MeshStandardMaterial({color:0x16233a,roughness:1}));
+  ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+  const site=new THREE.Mesh(new THREE.PlaneGeometry(SITE_W,SITE_D),
+    new THREE.MeshStandardMaterial({color:0x1d2f4d,roughness:.95}));
+  site.rotation.x=-Math.PI/2; site.position.y=0.02; site.receiveShadow=true; scene.add(site);
+  const grid=new THREE.GridHelper(240,24,0x2c4163,0x223450);
+  grid.position.y=0.04; scene.add(grid);
+  const redline=new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-SITE_W/2,0.08,-SITE_D/2),new THREE.Vector3(SITE_W/2,0.08,-SITE_D/2),
+      new THREE.Vector3(SITE_W/2,0.08,SITE_D/2),new THREE.Vector3(-SITE_W/2,0.08,SITE_D/2)]),
+    new THREE.LineBasicMaterial({color:0xef4444}));
+  scene.add(redline);
+  // 指北针
+  const northL=makeLabel("▲ 北 N",13); northL.position.set(0,2,SITE_D/2+6); scene.add(northL);
+
+  function makeLabel(text,size){
+    const d=document.createElement("div"); d.className="label"; d.style.fontSize=(size||11)+"px";
+    d.textContent=text; return new THREE.CSS2DObject(d);
+  }
+
+  // ---------- 状态 ----------
+  let far=1.0, blocks=[], blockGroup=new THREE.Group(), sightGroup=new THREE.Group();
+  scene.add(blockGroup); scene.add(sightGroup);
+  let mode="single";                 // single | compare
+  let observer=null;                 // 单点模式观察点 block
+  let hoverBlock=null;
+  let analyses=null;                 // {single} 或 {west,east}
+
+  const NEUTRAL=0x8aa0b8, OBS_BLUE=0x38bdf8, ORANGE=0xf97316, PINK=0xec4899, RED=0xef4444, YELLOW=0xfacc15;
+
+  function disposeGroup(g){
+    g.traverse(o=>{
+      if(o.geometry) o.geometry.dispose();
+      if(o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose()); }
+      if(o.isCSS2DObject) labelRenderer.remove(o);
+    });
+    while(g.children.length) g.remove(g.children[0]);
+  }
+
+  function buildBlocks(){
+    disposeGroup(blockGroup); blocks=[];
+    const w=wAt(far), h=hAt(far,w);
+    const boxGeo=new THREE.BoxGeometry(w,h,w);
+    const edgeGeo=new THREE.EdgesGeometry(boxGeo);
+    for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+      const x=COL_X(c)+ROW_OFFSET[r], z=ROW_Z(r);
+      const mat=new THREE.MeshStandardMaterial({color:NEUTRAL,roughness:.62,metalness:.08});
+      const mesh=new THREE.Mesh(boxGeo,mat);
+      mesh.position.set(x,h/2,z); mesh.castShadow=true; mesh.receiveShadow=true;
+      const edge=new THREE.LineSegments(edgeGeo,new THREE.LineBasicMaterial({color:0x0b1426}));
+      mesh.add(edge);
+      const id="R"+(r+1)+"-C"+(c+1);
+      const lab=makeLabel(id,10); lab.position.set(0,h/2+1.2,0); mesh.add(lab);
+      const cnt=makeLabel("",11); cnt.position.set(0,h+1.6,0); cnt.visible=false; mesh.add(cnt);
+      blockGroup.add(mesh);
+      blocks.push({id,row:r,col:c,x,z,w,h,mesh,mat,label:lab,cntLab:cnt,baseH:h});
+    }
+  }
+
+  // ---------- 视线分析 ----------
+  // 目标：北边界上的 7(x) × 5(高度) 点阵
+  const T_XS=[0,1,2,3,4,5,6].map(i=>-55+i*110/6);
+  const T_YS=[0,6,12,18,24];
+  function analyze(obs){
+    const rays=[], counts=new Map();
+    const P=new THREE.Vector3(obs.x, obs.h+0.35, obs.z);
+    const zEdge=SITE_D/2, dz=zEdge-obs.z;
+    for(const xq of T_XS){
+      for(const yt of T_YS){
+        const Q=new THREE.Vector3(xq,yt,zEdge), segs=[];
+        const dx=xq-obs.x, dy=yt-P.y;
+        for(const b of blocks){
+          if(b.z-b.w/2 <= obs.z+0.01) continue;                 // 仅北侧体块可遮挡
+          const tz0=(b.z-b.w/2-obs.z)/dz, tz1=(b.z+b.w/2-obs.z)/dz;
+          let tx0,tx1;
+          if(Math.abs(dx)<1e-6){ if(obs.x<b.x-b.w/2||obs.x>b.x+b.w/2) continue; tx0=0;tx1=1; }
+          else{
+            tx0=(b.x-b.w/2-obs.x)/dx; tx1=(b.x+b.w/2-obs.x)/dx;
+            if(tx0>tx1){const t=tx0;tx0=tx1;tx1=t;}
+          }
+          const lo=Math.max(tz0,tx0,0), hi=Math.min(tz1,tx1,1);
+          if(hi<=lo) continue;
+          const yIn=P.y+dy*lo;
+          if(yIn>b.h+0.05) continue;                            // 从屋顶上方越过
+          let end=hi;
+          if(dy<0){ const tc=(b.h-P.y)/dy; if(tc<end) end=Math.max(lo,tc); }
+          segs.push({t0:lo,t1:end,block:b});
+          counts.set(b,(counts.get(b)||0)+1);
+        }
+        segs.sort((a,b)=>a.t0-b.t0);
+        rays.push({P:P.clone(),Q:Q.clone(),segs});
+      }
+    }
+    const blockedRays=rays.filter(r=>r.segs.length).length;
+    return {obs,rays,counts,blockedRays,total:rays.length};
+  }
+
+  const FREE_SINGLE=0x4ade80, FREE_W=0x38bdf8, FREE_E=0xe879f9, BLOCK_RED=0xef4444, HILITE=0xfacc15;
+  function buildSight(){
+    disposeGroup(sightGroup);
+    if(mode==="single"){
+      if(!observer) return;
+      analyses={single:analyze(observer)};
+      renderRays(analyses.single,FREE_SINGLE,null);
+    }else{
+      const west=blocks.find(b=>b.id==="R1-C1"), east=blocks.find(b=>b.id==="R1-C6");
+      analyses={west:analyze(west),east:analyze(east)};
+      renderRays(analyses.west,FREE_W,"west");
+      renderRays(analyses.east,FREE_E,"east");
+    }
+    colorBlocks(); updateOcclusionUI();
+  }
+
+  function renderRays(res,freeColor,side){
+    const sphereGeo=new THREE.SphereGeometry(0.38,10,8);
+    const sphereMat=new THREE.MeshBasicMaterial({color:BLOCK_RED});
+    res.viewObjs=[];
+    for(const ray of res.rays){
+      const ts=[0]; ray.segs.forEach(s=>ts.push(s.t0,s.t1)); ts.push(1);
+      const uniq=[...new Set(ts.map(t=>Math.round(t*1e5)/1e5))].sort((a,b)=>a-b);
+      const pts=uniq.map(t=>ray.P.clone().lerp(ray.Q,t));
+      const geo=new THREE.BufferGeometry().setFromPoints(pts);
+      const colors=[];
+      const segInfo=[];
+      for(let i=0;i<pts.length-1;i++){
+        const mid=(uniq[i]+uniq[i+1])/2;
+        const hit=ray.segs.find(s=>mid>s.t0-1e-6&&mid<s.t1+1e-6);
+        const c=new THREE.Color(hit?BLOCK_RED:freeColor);
+        colors.push(c.r,c.g,c.b,c.r,c.g,c.b);
+        segInfo.push(hit?hit.block:null);
+      }
+      geo.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));
+      const line=new THREE.Line(geo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.95}));
+      sightGroup.add(line);
+      const obj={line,geo,ray,segInfo,freeColor,side,spheres:[]};
+      ray.segs.forEach(s=>{
+        const sp=new THREE.Mesh(sphereGeo,sphereMat);
+        sp.position.copy(ray.P.clone().lerp(ray.Q,s.t0));
+        sightGroup.add(sp); obj.spheres.push(sp);
+      });
+      res.viewObjs.push(obj);
+    }
+  }
+
+  // 遮挡者着色 + 计数标签
+  function colorBlocks(){
+    const cw=mode==="compare"?analyses.west.counts:new Map();
+    const ce=mode==="compare"?analyses.east.counts:new Map();
+    const cs=mode==="single"?analyses.single.counts:new Map();
+    for(const b of blocks){
+      let color=NEUTRAL, cls="", txt="";
+      const isObs=(mode==="single"&&observer===b)||
+        (mode==="compare"&&(b.id==="R1-C1"||b.id==="R1-C6"));
+      if(isObs){ color=OBS_BLUE; cls="obs"; txt=(b.id==="R1-C1"?"西侧观察点":b.id==="R1-C6"?"东侧观察点":"观察点")+" "+b.id; }
+      else if(mode==="single"){
+        const n=cs.get(b);
+        if(n){ color=ORANGE; cls="cnt"; txt="遮挡 "+n+" 条"; }
+      }else{
+        const w=cw.get(b), e=ce.get(b);
+        if(w&&e){ color=RED; cls="cntb"; txt="西"+w+" / 东"+e; }
+        else if(w){ color=ORANGE; cls="cnt"; txt="西侧 "+w+" 条"; }
+        else if(e){ color=PINK; cls="cnt2"; txt="东侧 "+e+" 条"; }
+      }
+      if(hoverBlock===b && !isObs){ color=YELLOW; }
+      b.mat.color.setHex(color);
+      b.mat.emissive.setHex(hoverBlock===b?0x713f00:(color===RED?0x4a0d0d:color===ORANGE?0x4a2408:color===PINK?0x4a1230:color===OBS_BLUE?0x0a2f4a:0x000000));
+      b.cntLab.element.className="label "+cls;
+      b.cntLab.element.textContent=txt; b.cntLab.visible=!!txt;
+      b.label.element.style.display=isObs?"none":"";
+      b._occColor=color;
+    }
+  }
+
+  // 悬停：高亮该体块造成的遮挡段
+  function applyHover(){
+    const all=mode==="single"?[analyses.single]:[analyses.west,analyses.east];
+    for(const res of all){
+      for(const vo of res.viewObjs){
+        const attr=vo.geo.getAttribute("color");
+        for(let i=0;i<vo.segInfo.length;i++){
+          const b=vo.segInfo[i];
+          let col;
+          if(!b) col=new THREE.Color(vo.freeColor);
+          else if(hoverBlock && b===hoverBlock) col=new THREE.Color(HILITE);
+          else col=new THREE.Color(BLOCK_RED);
+          attr.setXYZ(i,col.r,col.g,col.b); attr.setXYZ(i+1,col.r,col.g,col.b);
+        }
+        attr.needsUpdate=true;
+        vo.spheres.forEach(sp=>sp.material.color.setHex(hoverBlock?HILITE:BLOCK_RED));
+      }
+    }
+    colorBlocks();
+  }
+
+  // ---------- UI ----------
+  const $=id=>document.getElementById(id);
+  const slider=$("slider"), banner=$("banner");
+  $("tick").style.left=((F_CRIT-F_MIN)/(F_MAX-F_MIN)*100)+"%";
+  $("tick-txt").textContent="临界 "+F_CRIT.toFixed(2);
+
+  function fmt(n,d=1){return n.toFixed(d);}
+  function updateStats(){
+    const w=wAt(far), h=hAt(far,w), dAct=PITCH_Z-w, dReq=K*h;
+    const breach=dAct<dReq;
+    $("s-far").textContent=fmt(far,2);
+    $("s-gfa").textContent=fmt(far*SITE_A,0)+" ㎡";
+    $("s-cov").textContent=fmt(N*w*w/SITE_A*100,1)+"%";
+    $("s-wh").textContent=fmt(w,1)+"m / "+fmt(h,1)+"m";
+    $("s-floors").textContent=fmt(h/FLOOR_H,1)+" 层";
+    $("s-dact").textContent=fmt(dAct,2)+"m";
+    $("s-dreq").textContent=fmt(dReq,2)+"m";
+    const setX=SITE_W/2-(50+w/2), setZ=SITE_D/2-(26+w/2);
+    $("s-setback").textContent=fmt(Math.min(setX,setZ),1)+"m";
+    const st=$("s-status");
+    if(breach){ st.textContent="突破间距限制"; st.className="v bad"; }
+    else { st.textContent="符合日照间距"; st.className="v good"; }
+    if(breach){
+      banner.style.display="block";
+      banner.innerHTML="⚠ 已突破日照间距下限：要求间距 "+fmt(dReq,2)+"m ＞ 实际间距 "+fmt(dAct,2)+
+        "m —— 后排体块开始遮挡前排视线<small>临界容积率 "+F_CRIT.toFixed(2)+
+        "，继续调高将加剧遮挡（红色段为被遮挡视线）</small>";
+    } else banner.style.display="none";
+    drawSection(w,h,dAct,dReq,breach);
+  }
+
+  function updateOcclusionUI(){
+    const list=$("occlist"); list.innerHTML="";
+    if(mode==="single"){
+      const res=analyses.single;
+      $("o-name").textContent=res.obs.id;
+      $("o-stat").innerHTML='<span class="'+(res.blockedRays?'bad':'good')+'">'+
+        res.total+" / "+res.blockedRays+"（遮挡率 "+fmt(res.blockedRays/res.total*100,1)+'%）</span>';
+      const rows=[...res.counts.entries()].sort((a,b)=>b[1]-a[1]);
+      if(!rows.length) list.innerHTML='<div class="hint">该观察点视线无遮挡</div>';
+      rows.forEach(([b,n])=>{
+        const d=document.createElement("div"); d.className="ocrow";
+        d.innerHTML="<span>"+b.id+"（第"+(b.row+1)+"排）</span><span class='tag'>遮挡 "+n+" 条视线</span>";
+        d.onmouseenter=()=>{hoverBlock=b;applyHover();};
+        d.onmouseleave=()=>{hoverBlock=null;applyHover();};
+        list.appendChild(d);
+      });
+    }else{
+      const w=analyses.west, e=analyses.east;
+      const wr=w.blockedRays/w.total*100, er=e.blockedRays/e.total*100;
+      $("w-rate").textContent=fmt(wr,1)+"%";
+      $("e-rate").textContent=fmt(er,1)+"%";
+      $("w-detail").textContent=w.blockedRays+"/"+w.total+" 条被遮挡；涉及 "+w.counts.size+" 个体块";
+      $("e-detail").textContent=e.blockedRays+"/"+e.total+" 条被遮挡；涉及 "+e.counts.size+" 个体块";
+      const diff=Math.abs(wr-er);
+      $("cmp-diff").innerHTML='<span class="'+(diff>0.5?'bad':'good')+'">'+fmt(diff,1)+' 个百分点</span>';
+      const worse=wr>er?"西侧":er>wr?"东侧":"两侧相同";
+      $("cmp-note").textContent="错位布置下，"+worse+(diff<0.5?"：":" 一侧视线穿越体块的概率更高。")+
+        "橙色=仅挡西侧视线，粉色=仅挡东侧视线，红色=两侧均挡。";
+    }
+  }
+
+  // ---------- 2D 剖面 ----------
+  function drawSection(w,h,dAct,dReq,breach){
+    const cv=$("sec"), ctx=cv.getContext("2d");
+    ctx.clearRect(0,0,cv.width,cv.height);
+    const padL=40,padR=20,padT=24,padB=36;
+    const zMin=-40,zMax=40,hMax=26;
+    const X=z=>padL+(z-zMin)/(zMax-zMin)*(cv.width-padL-padR);
+    const Y=hh=>cv.height-padB-hh/hMax*(cv.height-padT-padB);
+    ctx.strokeStyle="#334563"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(padL,Y(0)); ctx.lineTo(cv.width-padR,Y(0)); ctx.stroke();
+    ctx.fillStyle="#8fa3c0"; ctx.font="12px sans-serif";
+    ctx.fillText("南（向阳面）",padL,cv.height-12);
+    ctx.fillText("北",cv.width-padR-16,cv.height-12);
+    // 三排体块剖面
+    for(let r=0;r<ROWS;r++){
+      const zc=ROW_Z(r), z0=zc-w/2, z1=zc+w/2;
+      ctx.fillStyle= r===0?"#0c4a6e":(breach?"#7f1d1d":"#274063");
+      ctx.fillRect(X(z0),Y(h),X(z1)-X(z0),Y(0)-Y(h));
+      ctx.strokeStyle="#7dd3fc"; ctx.strokeRect(X(z0),Y(h),X(z1)-X(z0),Y(0)-Y(h));
+      ctx.fillStyle="#9fb9d8"; ctx.fillText("第"+(r+1)+"排 h="+fmt(h,1)+"m",X(z0)+3,Y(h)-5);
+    }
+    // 日照光线：自前排屋顶北侧以系数 k=1（45°）向北向下
+    const zFront=ROW_Z(0)+w/2, yTop=h;
+    const rayEndZ=zFront+h/K;                 // 光线落到地面的位置
+    const nextFacade=ROW_Z(1)-w/2;
+    const ok=rayEndZ<=nextFacade+0.01;
+    ctx.strokeStyle=ok?"#4ade80":"#ef4444"; ctx.lineWidth=2; ctx.setLineDash([7,5]);
+    ctx.beginPath(); ctx.moveTo(X(zFront),Y(yTop));
+    ctx.lineTo(X(Math.min(rayEndZ,zMax)),Y(Math.max(0,yTop-(Math.min(rayEndZ,zMax)-zFront)/K)));
+    ctx.stroke(); ctx.setLineDash([]);
+    // 间距标注
+    ctx.strokeStyle="#facc15"; ctx.lineWidth=1.5;
+    const yDim=Y(0)+14;
+    ctx.beginPath();ctx.moveTo(X(ROW_Z(0)+w/2),yDim);ctx.lineTo(X(ROW_Z(1)-w/2),yDim);ctx.stroke();
+    ctx.fillStyle="#facc15"; ctx.font="11px sans-serif";
+    ctx.fillText("D="+fmt(dAct,1)+"m",X((zFront+nextFacade)/2)-28,yDim+16);
+    ctx.fillStyle=breach?"#ef4444":"#4ade80";
+    ctx.fillText("要求 k·h="+fmt(dReq,1)+"m",padL,18);
+    ctx.fillStyle=breach?"#fca5a5":"#86efac";
+    ctx.fillText(breach?"光线在到达后排立面前落地 → 遮挡":"光线越过间距落地 → 日照满足",padL+118,18);
+  }
+
+  // ---------- 交互 ----------
+  const raycaster=new THREE.Raycaster(), mouse=new THREE.Vector2();
+  function pick(ev){
+    const rect=renderer.domElement.getBoundingClientRect();
+    mouse.x=((ev.clientX-rect.left)/rect.width)*2-1;
+    mouse.y=-((ev.clientY-rect.top)/rect.height)*2+1;
+    raycaster.setFromCamera(mouse,camera);
+    const hit=raycaster.intersectObjects(blocks.map(b=>b.mesh),false)[0];
+    return hit?hit.object:null;
+  }
+  renderer.domElement.addEventListener("click",ev=>{
+    if(mode==="compare") return;
+    const m=pick(ev); if(!m) return;
+    observer=blocks.find(b=>b.mesh===m);
+    buildSight();
+  });
+  renderer.domElement.addEventListener("pointermove",ev=>{
+    const m=mode==="single"?pick(ev):null;
+    const b=m?blocks.find(x=>x.mesh===m):null;
+    renderer.domElement.style.cursor=b?"pointer":"";
+    if(b!==hoverBlock){ hoverBlock=b; applyHover(); }
+  });
+
+  slider.addEventListener("input",()=>{
+    far=parseFloat(slider.value);
+    rebuild();
+  });
+  $("btn-crit").onclick=()=>{ far=Math.round(F_CRIT*100)/100; slider.value=far; rebuild(); };
+  $("btn-mode").onclick=()=>{
+    mode=mode==="single"?"compare":"single";
+    $("btn-mode").textContent="切换："+(mode==="single"?"双点对照":"单点观察");
+    $("sec-single").style.display=mode==="single"?"":"none";
+    $("sec-cmp").style.display=mode==="compare"?"":"none";
+    buildSight();
+  };
+
+  function rebuild(){
+    buildBlocks();
+    if(mode==="single"&&observer){
+      const id=observer.id; observer=blocks.find(b=>b.id===id)||blocks.find(b=>b.id==="R1-C3");
+    }
+    buildSight(); updateStats();
+  }
+
+  // 视角缓动
+  let camAnim=null;
+  function flyTo(pos,tgt){
+    camAnim={p0:camera.position.clone(),p1:new THREE.Vector3(...pos),
+      t0:controls.target.clone(),t1:new THREE.Vector3(...tgt),t:0,dur:.9};
+  }
+  const views={
+    "v-bird":[[95,100,115],[0,4,0]],
+    "v-south":[[0,7,-105],[0,12,10]],
+    "v-side":[[130,22,0],[0,10,0]]
+  };
+  Object.entries(views).forEach(([id,args])=>{
+    $(id).onclick=()=>{
+      document.querySelectorAll(".btns button").forEach(b=>b.classList.remove("on"));
+      $(id).classList.add("on"); flyTo(args[0],args[1]);
+    };
+  });
+
+  addEventListener("resize",()=>{
+    camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight); labelRenderer.setSize(innerWidth,innerHeight);
+  });
+
+  // ---------- 启动 ----------
+  buildBlocks();
+  observer=blocks.find(b=>b.id==="R1-C3");
+  buildSight(); updateStats();
+
+  const clock=new THREE.Clock();
+  (function loop(){
+    requestAnimationFrame(loop);
+    const dt=clock.getDelta();
+    if(camAnim){
+      camAnim.t=Math.min(1,camAnim.t+dt/camAnim.dur);
+      const e=1-Math.pow(1-camAnim.t,3);
+      camera.position.lerpVectors(camAnim.p0,camAnim.p1,e);
+      controls.target.lerpVectors(camAnim.t0,camAnim.t1,e);
+      if(camAnim.t>=1) camAnim=null;
+    }
+    controls.update();
+    renderer.render(scene,camera);
+    labelRenderer.render(scene,camera);
+  })();
+})();
+</script>
