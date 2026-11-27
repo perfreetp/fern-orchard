@@ -1,0 +1,662 @@
+<title>层状介质波前演示</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#0d141b; --panel:#131d27; --panel2:#0f1720;
+    --fg:#dce6ef; --dim:#8ba0b3; --line:#26374a;
+    --accent:#4cc9f0; --accent2:#fb8500;
+    --d1:#ffd166; --d2:#ef476f; --d3:#06d6a0;
+    --direct:#8ecae6;
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+    padding-left:max(16px, env(safe-area-inset-left,0px));
+    padding-right:max(16px, env(safe-area-inset-right,0px));
+    padding-block:12px 28px;
+    max-width:1560px; margin:0 auto;
+  }
+  h1{font-size:19px;margin:2px 0 2px}
+  .sub{color:var(--dim);font-size:12.5px;margin-bottom:10px}
+  .bar{
+    display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;padding:8px 12px;margin-bottom:10px;
+  }
+  button{
+    background:#1b2c3d;color:var(--fg);border:1px solid #33506b;
+    border-radius:7px;padding:5px 12px;font-size:13px;cursor:pointer;
+  }
+  button:hover{background:#24405a;border-color:var(--accent)}
+  button.primary{background:#0e4a63;border-color:var(--accent);font-weight:600}
+  button.primary:hover{background:#146082}
+  label.chk{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--dim);cursor:pointer;user-select:none}
+  input[type=range]{width:110px;accent-color:var(--accent)}
+  .sep{width:1px;height:20px;background:var(--line)}
+  main{display:flex;gap:10px;align-items:stretch}
+  .pane{
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:8px;position:relative;min-width:0;
+  }
+  #secPane{flex:1.55}
+  #recPane{flex:1}
+  .pane h2{font-size:13px;margin:0 0 6px;color:var(--dim);font-weight:600}
+  .pane h2 .hint{font-weight:400;color:#5c7185;font-size:11.5px}
+  canvas{display:block;width:100%;border-radius:6px;background:var(--panel2);touch-action:none}
+  #sec{height:min(62vh,640px)}
+  #rec{height:min(62vh,640px)}
+  #status{
+    display:flex;flex-wrap:wrap;gap:6px 24px;margin-top:10px;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:8px 14px;font-size:12.5px;color:var(--dim);min-height:38px;align-items:center;
+  }
+  #status b{color:var(--fg);font-weight:600}
+  #status .crit{color:var(--accent2)}
+  #hoverInfo{color:var(--accent)}
+  .notes{
+    margin-top:10px;color:#5c7185;font-size:12px;line-height:1.7;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;
+  }
+  .notes code{color:#9db8cc;background:#0d1620;padding:1px 5px;border-radius:4px}
+  .tip{
+    position:absolute;pointer-events:none;background:#0b1420ee;border:1px solid #33506b;
+    border-radius:8px;padding:7px 10px;font-size:12px;color:var(--fg);
+    display:none;z-index:5;max-width:240px;box-shadow:0 4px 16px #000a;
+  }
+  .tip .row{display:flex;align-items:center;gap:6px;white-space:nowrap}
+  .sw{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+  @media (max-width:900px){
+    main{flex-direction:column}
+    #sec,#rec{height:52vh}
+  }
+</style>
+
+<h1>层状介质中的地震波前传播</h1>
+<div class="sub">射线追踪 + 斯涅尔定律实时计算 · 拖动界面改层厚 · 拖动层内速度值改速度 · 拖动震源 / 绕射点改位置 · 点击震源激发</div>
+
+<div class="bar">
+  <button class="primary" id="btnFire">▶ 激发</button>
+  <button id="btnPause">⏸ 暂停</button>
+  <button id="btnReset">↺ 重置时间</button>
+  <span class="sep"></span>
+  <label class="chk">速度 <input type="range" id="speed" min="5" max="100" value="35"></label>
+  <label class="chk"><input type="checkbox" id="showRays"> 显示射线</label>
+  <span class="sep"></span>
+  <button id="presetDefault">默认模型</button>
+  <button id="presetCrit">临界角演示</button>
+  <span id="clock" style="margin-left:auto;color:var(--dim);font-size:12.5px">t = 0.00 s</span>
+</div>
+
+<main>
+  <div class="pane" id="secPane">
+    <h2>地下剖面 <span class="hint">横线拖厚度 · “v=…” 左右拖改速度 · 星形=震源(点击激发) · 彩点=绕射点 · 地表三角=检波器记录线</span></h2>
+    <canvas id="sec"></canvas>
+    <div class="tip" id="secTip"></div>
+  </div>
+  <div class="pane" id="recPane">
+    <h2>地面记录 (t–x 剖面) <span class="hint">鼠标划过曲线可反查贡献来源</span></h2>
+    <canvas id="rec"></canvas>
+    <div class="tip" id="recTip"></div>
+  </div>
+</main>
+
+<div id="status">
+  <span id="critInfo"></span>
+  <span id="hoverInfo"></span>
+</div>
+
+<div class="notes">
+  <b style="color:var(--fg)">物理要点</b> ·
+  折射遵循斯涅尔定律 <code>sinθ₁/v₁ = sinθ₂/v₂</code>：进入高速层波前远离法线弯折，速度差越大曲率变化越剧烈。
+  当 <code>v₂ &gt; v₁</code> 且入射角超过临界角 <code>θc = asin(v₁/v₂)</code> 时发生全反射，透射支消失、能量全部返回上层（橙色波前）。
+  绕射点被直达波扫过后成为次级波源，其子波在地面记录线上叠出双曲线 <code>t(x) = t₀ + √((x−x₀)² + z₀²)/v</code> —— 层速度越高，双曲线张开越小（越“平”）。
+  透射/反射能量按角度相关的简化反射系数分配到波前亮度上。
+</div>
+
+<script>
+"use strict";
+/* ================= 模型状态 ================= */
+const W_M = 2000, D_M = 1200, T_MAX = 1.5;      // 剖面尺寸(m)与记录时长(s)
+const TH_MAX = 1.45;                             // 最大出射角(弧度, 自竖直方向)
+const N_SRC = 241, N_DIF = 161;                  // 射线数
+const DIF_COLORS = ["#ffd166", "#ef476f", "#06d6a0"];
+const LAYER_BG = ["#182634", "#1b2e38", "#1d3334", "#212b3d"];
+
+let layers, ifs, src, difs;                      // v(m/s), 界面深度(m), 震源, 绕射点
+let srcPaths = [], difData = [], reflHits = [], ifStats = [];
+let anim = { t: 0, playing: false, speed: 0.35 };
+let showRays = false;
+let hoverDif = -1;                               // 记录面板反查高亮的绕射点
+let dirty = true;
+
+function defaultModel() {
+  layers = [{v:1500},{v:2200},{v:3000},{v:3800}];
+  ifs = [300, 600, 900];
+  src = { x: 600 };
+  difs = [
+    { x: 950,  z: 420, name: "D1" },
+    { x: 1250, z: 750, name: "D2" },
+    { x: 700,  z: 1050, name: "D3" },
+  ];
+}
+function criticalModel() {
+  layers = [{v:2000},{v:2100},{v:3200},{v:3800}];
+  ifs = [350, 700, 950];
+  src = { x: 420 };
+  difs = [
+    { x: 900,  z: 500, name: "D1" },
+    { x: 1200, z: 850, name: "D2" },
+    { x: 700,  z: 1050, name: "D3" },
+  ];
+}
+
+/* ================= 射线追踪 ================= */
+function layerAt(z) {
+  for (let j = 0; j < ifs.length; j++) if (z < ifs[j]) return j;
+  return layers.length - 1;
+}
+// 从 (x0,z0) 出发, 层 li, 出射角 theta(自竖直), dir=+1 向下 / -1 向上
+function trace(x0, z0, li0, theta, dir0) {
+  const pts = [{ x: x0, z: z0, t: 0, amp: 1, ref: false }];
+  const events = [];
+  let li = li0, dir = dir0, ref = false, amp = 1;
+  const p = Math.sin(theta) / layers[li].v;      // 射线参数(水平慢度), 全程守恒
+  let surfHit = null;
+  for (let guard = 0; guard < 40; guard++) {
+    const v = layers[li].v;
+    let s = p * v; s = Math.max(-1, Math.min(1, s));   // sinθ
+    const c = Math.sqrt(Math.max(1e-12, 1 - s * s));   // cosθ
+    const cur = pts[pts.length - 1];
+    if (dir > 0 && li === layers.length - 1) {          // 底部半空间: 直线延伸
+      const dt = Math.max(0, T_MAX + 0.4 - cur.t);
+      pts.push({ x: cur.x + dt * v * s, z: cur.z + dt * v * c, t: cur.t + dt, amp, ref });
+      break;
+    }
+    let zT, hitSurf = false;
+    if (dir > 0) zT = ifs[li];
+    else if (li === 0) { zT = 0; hitSurf = true; }
+    else zT = ifs[li - 1];
+    const dist = Math.max(0, (zT - cur.z) / (dir * c));
+    const t = cur.t + dist / v;
+    const nx = cur.x + dist * s;
+    if (hitSurf) {
+      pts.push({ x: nx, z: 0, t, amp, ref });
+      surfHit = { x: nx, t, amp, ref };
+      break;
+    }
+    const ifIdx = dir > 0 ? li : li - 1;
+    const ni = dir > 0 ? li + 1 : li - 1;
+    const v2 = layers[ni].v;
+    const sT = p * v2;
+    if (Math.abs(sT) > 1 + 1e-9) {                      // 全反射
+      ref = true; dir = -dir;
+      events.push({ ifIdx, type: "r" });
+      pts.push({ x: nx, z: zT, t, amp, ref });
+    } else {                                            // 透射(折射)
+      const cT = Math.sqrt(Math.max(0, 1 - sT * sT));
+      let R = (v2 * c - v * cT) / (v2 * c + v * cT);    // 角度相关简化反射系数
+      R = R * R;
+      amp *= Math.sqrt(Math.max(0.02, 1 - R));
+      events.push({ ifIdx, type: "t" });
+      li = ni;
+      pts.push({ x: nx, z: zT, t, amp, ref });
+    }
+    if (t > T_MAX + 0.4) break;
+  }
+  return { pts, surfHit, events };
+}
+function interpHits(hits, x) {                          // hits 按 x 排序的 {x,t}
+  if (!hits.length || x < hits[0].x || x > hits[hits.length - 1].x) return null;
+  let lo = 0, hi = hits.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (hits[m].x <= x) lo = m; else hi = m; }
+  const a = hits[lo], b = hits[hi];
+  return a.t + (b.t - a.t) * (x - a.x) / Math.max(1e-9, b.x - a.x);
+}
+function rebuild() {
+  srcPaths = [];
+  for (let i = 0; i < N_SRC; i++) {
+    const th = -TH_MAX + 2 * TH_MAX * i / (N_SRC - 1);
+    srcPaths.push(trace(src.x, 0, 0, th, 1));
+  }
+  reflHits = srcPaths.filter(q => q.surfHit && q.surfHit.ref)
+                     .map(q => q.surfHit).sort((a, b) => a.x - b.x);
+  ifStats = ifs.map(() => ({ t: 0, r: 0 }));
+  for (const q of srcPaths) for (const e of q.events)
+    if (ifStats[e.ifIdx]) ifStats[e.ifIdx][e.type]++;
+  difData = difs.map(d => {
+    const paths = [];
+    const li = layerAt(d.z);
+    for (let i = 0; i < N_DIF; i++) {
+      const th = -TH_MAX + 2 * TH_MAX * i / (N_DIF - 1);
+      paths.push(trace(d.x, d.z, li, th, -1));
+    }
+    const hits = paths.filter(q => q.surfHit).map(q => q.surfHit).sort((a, b) => a.x - b.x);
+    const tD = interpHits(hits, src.x);                 // 互易性: 源→绕射点 = 绕射点→源
+    return { paths, hits, tD: tD == null ? Infinity : tD };
+  });
+  dirty = true;
+}
+
+/* ================= 画布与坐标映射 ================= */
+const sec = document.getElementById("sec"), rec = document.getElementById("rec");
+const sctx = sec.getContext("2d"), rctx = rec.getContext("2d");
+let SW = 0, SH = 0, RW = 0, RH = 0;
+const SM = { l: 56, t: 34, r: 14, b: 30 };              // 剖面边距
+const RM = { l: 52, t: 30, r: 12, b: 34 };              // 记录面板边距
+const sx = x => SM.l + x / W_M * (SW - SM.l - SM.r);
+const sz = z => SM.t + z / D_M * (SH - SM.t - SM.b);
+const sxInv = px => (px - SM.l) / (SW - SM.l - SM.r) * W_M;
+const szInv = px => (px - SM.t) / (SH - SM.t - SM.b) * D_M;
+const rx = x => RM.l + x / W_M * (RW - RM.l - RM.r);
+const rt = t => RM.t + t / T_MAX * (RH - RM.t - RM.b);
+const rxInv = px => (px - RM.l) / (RW - RM.l - RM.r) * W_M;
+const rtInv = px => (px - RM.t) / (RH - RM.t - RM.b) * T_MAX;
+
+function fitCanvas(cv, ctx) {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = Math.max(2, Math.round(r.width * dpr));
+  cv.height = Math.max(2, Math.round(r.height * dpr));
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [r.width, r.height];
+}
+function resize() {
+  [SW, SH] = fitCanvas(sec, sctx);
+  [RW, RH] = fitCanvas(rec, rctx);
+  dirty = true;
+}
+new ResizeObserver(resize).observe(document.getElementById("secPane"));
+new ResizeObserver(resize).observe(document.getElementById("recPane"));
+
+/* ================= 波前求值 ================= */
+function frontAt(path, T) {
+  const pts = path.pts;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    if (T >= a.t && T <= b.t) {
+      const f = (T - a.t) / Math.max(1e-9, b.t - a.t);
+      return { ok: true, x: a.x + (b.x - a.x) * f, z: a.z + (b.z - a.z) * f, amp: a.amp, ref: a.ref };
+    }
+  }
+  return { ok: false };
+}
+function drawFront(ctx, paths, T, alpha, X, Z) {
+  let prev = null;
+  ctx.lineWidth = 1.6;
+  for (const q of paths) {
+    const p = frontAt(q, T);
+    if (p.ok && prev) {
+      ctx.strokeStyle = p.ref ? "#fb8500" : "#4cc9f0";
+      ctx.globalAlpha = alpha * Math.max(0.12, Math.min(prev.amp, p.amp));
+      ctx.beginPath(); ctx.moveTo(X(prev.x), Z(prev.z)); ctx.lineTo(X(p.x), Z(p.z)); ctx.stroke();
+    }
+    prev = p.ok ? p : null;
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ================= 剖面绘制 ================= */
+const GEO = []; for (let g = 100; g <= 1900; g += 100) GEO.push(g);
+let labelRects = [], ifY = [];
+
+function drawSection() {
+  const c = sctx;
+  c.clearRect(0, 0, SW, SH);
+  // 层
+  const zb = [0, ...ifs, D_M];
+  for (let i = 0; i < layers.length; i++) {
+    c.fillStyle = LAYER_BG[i % LAYER_BG.length];
+    c.fillRect(SM.l, sz(zb[i]), SW - SM.l - SM.r, sz(zb[i + 1]) - sz(zb[i]));
+  }
+  // 网格与坐标
+  c.strokeStyle = "#1c2a38"; c.fillStyle = "#5c7185"; c.font = "10.5px system-ui"; c.lineWidth = 1;
+  for (let z = 200; z < D_M; z += 200) {
+    c.beginPath(); c.moveTo(SM.l, sz(z)); c.lineTo(SW - SM.r, sz(z)); c.stroke();
+    c.textAlign = "right"; c.fillText(z + " m", SM.l - 6, sz(z) + 3);
+  }
+  for (let x = 0; x <= W_M; x += 500) {
+    c.beginPath(); c.moveTo(sx(x), SM.t); c.lineTo(sx(x), SH - SM.b); c.stroke();
+    c.textAlign = "center"; c.fillText(x + "", sx(x), SM.t - 8);
+  }
+  c.textAlign = "left"; c.fillText("x / m", SM.l + 2, SM.t - 8);
+  c.save(); c.translate(13, sz(600)); c.rotate(-Math.PI / 2); c.textAlign = "center"; c.fillText("深度 z / m", 0, 0); c.restore();
+
+  // 界面(可拖)
+  ifY = [];
+  for (let j = 0; j < ifs.length; j++) {
+    const y = sz(ifs[j]); ifY.push(y);
+    c.strokeStyle = "#3d5a75"; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(SM.l, y); c.lineTo(SW - SM.r, y); c.stroke();
+    c.fillStyle = "#3d5a75";
+    for (let k = 0; k < 3; k++) c.fillRect(SW - SM.r - 8, y - 5 + k * 4, 8, 2);
+  }
+  // 速度标注(可拖) + 临界角标注
+  labelRects = [];
+  c.font = "600 12.5px system-ui";
+  for (let i = 0; i < layers.length; i++) {
+    const zc = (zb[i] + zb[i + 1]) / 2;
+    const txt = "v = " + layers[i].v + " m/s";
+    const w = c.measureText(txt).width + 16;
+    const cx = sx(250 + i * 420), cy = sz(zc);
+    c.fillStyle = "#0d1620cc";
+    c.beginPath(); c.roundRect(cx - w / 2, cy - 11, w, 22, 6); c.fill();
+    c.strokeStyle = "#33506b"; c.lineWidth = 1; c.stroke();
+    c.fillStyle = "#9fd8ef"; c.textAlign = "center"; c.textBaseline = "middle";
+    c.fillText(txt, cx, cy + 1);
+    c.textBaseline = "alphabetic";
+    labelRects.push({ x: cx - w / 2, y: cy - 11, w, h: 22, layer: i });
+  }
+  // 速度递增界面临界角
+  for (let j = 0; j < ifs.length; j++) {
+    if (layers[j + 1].v > layers[j].v) {
+      const thc = Math.asin(layers[j].v / layers[j + 1].v) * 180 / Math.PI;
+      c.fillStyle = "#fb8500"; c.font = "11.5px system-ui"; c.textAlign = "right";
+      c.fillText("θc=" + thc.toFixed(1) + "°", SW - SM.r - 16, sz(ifs[j]) - 6);
+    }
+  }
+  // 记录线 + 检波器
+  c.strokeStyle = "#8ecae6"; c.lineWidth = 1.5;
+  c.beginPath(); c.moveTo(SM.l, sz(0)); c.lineTo(SW - SM.r, sz(0)); c.stroke();
+  for (const g of GEO) {
+    const gx = sx(g), gy = sz(0);
+    let flash = null;
+    const arr = arrivalsAt(g);
+    for (const a of arr) if (Math.abs(a.t - anim.t) < 0.025) flash = a.color;
+    c.fillStyle = flash || "#6b8299";
+    c.beginPath(); c.moveTo(gx, gy - 1); c.lineTo(gx - 5, gy - 11); c.lineTo(gx + 5, gy - 11); c.closePath(); c.fill();
+    if (flash) { c.globalAlpha = 0.35; c.beginPath(); c.arc(gx, gy - 6, 9, 0, 7); c.fill(); c.globalAlpha = 1; }
+  }
+  // 射线
+  if (showRays) {
+    c.lineWidth = 0.7;
+    for (const q of srcPaths) {
+      for (let i = 0; i < q.pts.length - 1; i++) {
+        const a = q.pts[i], b = q.pts[i + 1];
+        c.strokeStyle = a.ref ? "#fb850055" : "#ffffff22";
+        c.beginPath(); c.moveTo(sx(a.x), sz(a.z)); c.lineTo(sx(b.x), sz(b.z)); c.stroke();
+      }
+    }
+  }
+  // 波前快照(每0.1s)
+  const snaps = Math.floor(anim.t / 0.1);
+  for (let k = 1; k <= snaps; k++) {
+    const a = 0.10 + 0.80 * Math.pow(k / Math.max(1, snaps), 1.6);
+    drawFront(c, srcPaths, k * 0.1, a, sx, sz);
+  }
+  // 绕射点子波
+  difs.forEach((d, i) => {
+    const dd = difData[i], col = DIF_COLORS[i];
+    if (anim.t > dd.tD) {
+      const n2 = Math.floor((anim.t - dd.tD) / 0.1);
+      for (let k = 1; k <= n2; k++) {
+        const a = 0.10 + 0.75 * Math.pow(k / Math.max(1, n2), 1.6);
+        drawFrontColored(c, dd.paths, k * 0.1, a, col);
+      }
+      if (anim.t - dd.tD < 0.15) {                       // 激活脉冲
+        const f = (anim.t - dd.tD) / 0.15;
+        c.strokeStyle = col; c.globalAlpha = 1 - f; c.lineWidth = 2;
+        c.beginPath(); c.arc(sx(d.x), sz(d.z), 4 + f * 22, 0, 7); c.stroke();
+        c.globalAlpha = 1;
+      }
+    }
+  });
+  // 绕射点
+  difs.forEach((d, i) => {
+    const col = DIF_COLORS[i], X = sx(d.x), Z = sz(d.z);
+    if (i === hoverDif) {
+      c.strokeStyle = col; c.lineWidth = 2.5;
+      c.beginPath(); c.arc(X, Z, 13, 0, 7); c.stroke();
+    }
+    c.fillStyle = col;
+    c.beginPath(); c.arc(X, Z, 5.5, 0, 7); c.fill();
+    c.fillStyle = "#0d141b"; c.font = "700 9px system-ui"; c.textAlign = "center"; c.textBaseline = "middle";
+    c.fillText(d.name, X, Z + 0.5); c.textBaseline = "alphabetic";
+  });
+  // 震源
+  const SX = sx(src.x), SY = sz(0);
+  c.fillStyle = "#ff5d8f";
+  c.beginPath();
+  for (let k = 0; k < 10; k++) {
+    const r = k % 2 ? 5 : 11, a = -Math.PI / 2 + k * Math.PI / 5;
+    c[k ? "lineTo" : "moveTo"](SX + r * Math.cos(a), SY + r * Math.sin(a));
+  }
+  c.closePath(); c.fill();
+  c.fillStyle = "#ffd7e4"; c.font = "11.5px system-ui"; c.textAlign = "center";
+  c.fillText("震源(点击激发)", SX, SY + 24);
+}
+function drawFrontColored(ctx, paths, T, alpha, col) {
+  let prev = null;
+  ctx.lineWidth = 1.4; ctx.strokeStyle = col;
+  for (const q of paths) {
+    const p = frontAt(q, T);
+    if (p.ok && prev) {
+      ctx.globalAlpha = alpha * Math.max(0.12, Math.min(prev.amp, p.amp));
+      ctx.beginPath(); ctx.moveTo(sx(prev.x), sz(prev.z)); ctx.lineTo(sx(p.x), sz(p.z)); ctx.stroke();
+    }
+    prev = p.ok ? p : null;
+  }
+  ctx.globalAlpha = 1;
+}
+function arrivalsAt(gx) {
+  const out = [{ t: Math.abs(gx - src.x) / layers[0].v, color: "#8ecae6", label: "直达波" }];
+  difs.forEach((d, i) => {
+    const dd = difData[i];
+    const up = interpHits(dd.hits, gx);
+    if (up != null && isFinite(dd.tD)) out.push({ t: dd.tD + up, color: DIF_COLORS[i], label: d.name + " 绕射" });
+  });
+  const tr = interpHits(reflHits, gx);
+  if (tr != null) out.push({ t: tr, color: "#fb8500", label: "反射波" });
+  return out.sort((a, b) => a.t - b.t);
+}
+
+/* ================= 记录面板绘制 ================= */
+function drawRecord() {
+  const c = rctx;
+  c.clearRect(0, 0, RW, RH);
+  c.strokeStyle = "#1c2a38"; c.fillStyle = "#5c7185"; c.font = "10.5px system-ui"; c.lineWidth = 1;
+  for (let t = 0.2; t <= T_MAX; t += 0.2) {
+    c.beginPath(); c.moveTo(RM.l, rt(t)); c.lineTo(RW - RM.r, rt(t)); c.stroke();
+    c.textAlign = "right"; c.fillText(t.toFixed(1) + " s", RM.l - 5, rt(t) + 3);
+  }
+  for (let x = 0; x <= W_M; x += 500) {
+    c.beginPath(); c.moveTo(rx(x), RM.t); c.lineTo(rx(x), RH - RM.b); c.stroke();
+    c.textAlign = "center"; c.fillText(x + "", rx(x), RH - RM.b + 15);
+  }
+  c.textAlign = "left"; c.fillText("x / m", RM.l + 2, RH - RM.b + 15);
+  c.save(); c.translate(12, rt(0.75)); c.rotate(-Math.PI / 2); c.textAlign = "center"; c.fillText("时间 t", 0, 0); c.restore();
+  for (const g of GEO) { c.fillStyle = "#41576d"; c.fillRect(rx(g) - 1, RM.t - 4, 2, 4); }
+
+  const drawCurve = (fn, col, ampFn) => {
+    for (const pass of [0, 1]) {                        // 0:全程淡显 1:已记录部分加亮
+      c.strokeStyle = col; c.lineWidth = pass ? 2.2 : 1.2;
+      c.globalAlpha = pass ? 0.95 : 0.22;
+      let started = false;
+      c.beginPath();
+      for (let x = 0; x <= W_M; x += 8) {
+        const t = fn(x);
+        if (t == null || t > T_MAX || (pass && t > anim.t)) { started = false; continue; }
+        if (ampFn) c.globalAlpha = (pass ? 0.95 : 0.22) * Math.max(0.15, ampFn(x));
+        if (!started) { c.moveTo(rx(x), rt(t)); started = true; }
+        else { c.lineTo(rx(x), rt(t)); c.stroke(); c.beginPath(); c.moveTo(rx(x), rt(t)); }
+      }
+      c.stroke();
+    }
+    c.globalAlpha = 1;
+  };
+  drawCurve(x => Math.abs(x - src.x) / layers[0].v, "#8ecae6");                 // 直达波
+  if (reflHits.length > 1) {                                                    // 反射波
+    const ampOf = x => {
+      let lo = 0, hi = reflHits.length - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (reflHits[m].x <= x) lo = m; else hi = m; }
+      return (reflHits[lo].amp + reflHits[hi].amp) / 2;
+    };
+    drawCurve(x => interpHits(reflHits, x), "#fb8500", ampOf);
+  }
+  difs.forEach((d, i) => {                                                      // 绕射双曲线
+    const dd = difData[i];
+    if (!isFinite(dd.tD)) return;
+    const col = DIF_COLORS[i];
+    drawCurve(x => { const up = interpHits(dd.hits, x); return up == null ? null : dd.tD + up; },
+              i === hoverDif ? "#ffffff" : col);
+    const tApex = dd.tD + interpHits(dd.hits, d.x);                             // 顶点标记
+    if (tApex != null && tApex < T_MAX) {
+      c.fillStyle = col; c.globalAlpha = 0.9;
+      c.beginPath(); c.arc(rx(d.x), rt(tApex), 3, 0, 7); c.fill(); c.globalAlpha = 1;
+    }
+  });
+  // 时间游标
+  c.strokeStyle = "#ff5d8f"; c.lineWidth = 1.2; c.globalAlpha = 0.8;
+  c.beginPath(); c.moveTo(RM.l, rt(anim.t)); c.lineTo(RW - RM.r, rt(anim.t)); c.stroke();
+  c.globalAlpha = 1;
+}
+
+/* ================= 状态栏 ================= */
+const critInfo = document.getElementById("critInfo");
+const hoverInfo = document.getElementById("hoverInfo");
+function updateStatus() {
+  let best = -1, bestDV = 0;
+  for (let j = 0; j < ifs.length; j++) {
+    const dv = layers[j + 1].v - layers[j].v;
+    if (dv > bestDV) { bestDV = dv; best = j; }
+  }
+  if (best >= 0) {
+    const thc = Math.asin(layers[best].v / layers[best + 1].v) * 180 / Math.PI;
+    const st = ifStats[best];
+    critInfo.innerHTML = "关键界面 <b>第" + (best + 1) + "界面</b> (v=" + layers[best].v + " → " + layers[best + 1].v +
+      " m/s) · 临界角 <b class='crit'>θc=" + thc.toFixed(1) + "°</b> · 透射 <b>" + st.t +
+      "</b> 条 / 全反射 <b class='crit'>" + st.r + "</b> 条射线" +
+      (st.r > 0 ? " · <b class='crit'>透射支正在消失,能量返回上层</b>" : " · 调高下层速度可见全反射");
+  } else critInfo.textContent = "当前模型无速度递增界面,无全反射现象";
+}
+
+/* ================= 交互: 剖面 ================= */
+const secTip = document.getElementById("secTip");
+let drag = null, downPos = null, moved = 0;
+function secPos(e) { const r = sec.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+
+sec.addEventListener("pointerdown", e => {
+  const p = secPos(e); downPos = p; moved = 0;
+  const mx = sxInv(p.x), mz = szInv(p.y);
+  if (Math.hypot(p.x - sx(src.x), p.y - sz(0)) < 14) { drag = { type: "src" }; }
+  else {
+    for (let i = 0; i < difs.length; i++)
+      if (Math.hypot(p.x - sx(difs[i].x), p.y - sz(difs[i].z)) < 13) { drag = { type: "dif", i }; break; }
+    if (!drag) for (const r of labelRects)
+      if (p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h) { drag = { type: "vel", layer: r.layer, lastX: p.x }; break; }
+    if (!drag) for (let j = 0; j < ifY.length; j++)
+      if (Math.abs(p.y - ifY[j]) < 7 && p.x > SM.l) { drag = { type: "if", j }; break; }
+  }
+  if (drag) { sec.setPointerCapture(e.pointerId); e.preventDefault(); }
+});
+sec.addEventListener("pointermove", e => {
+  const p = secPos(e);
+  if (downPos) moved = Math.max(moved, Math.hypot(p.x - downPos.x, p.y - downPos.y));
+  if (drag) {
+    if (drag.type === "src") src.x = Math.max(30, Math.min(W_M - 30, sxInv(p.x)));
+    else if (drag.type === "dif") {
+      difs[drag.i].x = Math.max(30, Math.min(W_M - 30, sxInv(p.x)));
+      difs[drag.i].z = Math.max(40, Math.min(D_M - 30, szInv(p.y)));
+    } else if (drag.type === "vel") {
+      const L = layers[drag.layer];
+      L.v = Math.round(Math.max(600, Math.min(6000, L.v + (p.x - drag.lastX) * 6)) / 10) * 10;
+      drag.lastX = p.x;
+    } else if (drag.type === "if") {
+      const j = drag.j;
+      const lo = j === 0 ? 80 : ifs[j - 1] + 60;
+      const hi = j === ifs.length - 1 ? D_M - 150 : ifs[j + 1] - 60;
+      ifs[j] = Math.max(lo, Math.min(hi, szInv(p.y)));
+    }
+    rebuild(); updateStatus(); return;
+  }
+  // 悬停: 光标 + 检波器到点提示
+  let cur = "default";
+  if (Math.hypot(p.x - sx(src.x), p.y - sz(0)) < 14) cur = "grab";
+  for (const d of difs) if (Math.hypot(p.x - sx(d.x), p.y - sz(d.z)) < 13) cur = "move";
+  for (const r of labelRects) if (p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h) cur = "ew-resize";
+  for (const y of ifY) if (Math.abs(p.y - y) < 7 && p.x > SM.l) cur = "ns-resize";
+  sec.style.cursor = cur;
+  if (p.y < SM.t + 14 && p.x > SM.l && p.x < SW - SM.r) {
+    const gx = GEO.reduce((a, b) => Math.abs(sx(b) - p.x) < Math.abs(sx(a) - p.x) ? b : a);
+    const rows = arrivalsAt(gx).filter(a => a.t <= T_MAX)
+      .map(a => "<div class='row'><span class='sw' style='background:" + a.color + "'></span>" + a.label + " · t=" + a.t.toFixed(2) + " s</div>");
+    secTip.innerHTML = "<b>检波器 x=" + gx + " m</b>" + rows.join("");
+    secTip.style.display = "block";
+    secTip.style.left = Math.min(p.x + 14, SW - 230) + "px";
+    secTip.style.top = (p.y + 16) + "px";
+  } else secTip.style.display = "none";
+});
+sec.addEventListener("pointerup", () => {
+  if (drag && drag.type === "src" && moved < 5) fire();   // 点击震源=激发
+  drag = null; downPos = null;
+});
+sec.addEventListener("pointerleave", () => { secTip.style.display = "none"; });
+
+/* ================= 交互: 记录面板反查 ================= */
+const recTip = document.getElementById("recTip");
+rec.addEventListener("pointermove", e => {
+  const r = rec.getBoundingClientRect();
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  const mx = rxInv(px), mt = rtInv(py);
+  let bestI = -1, bestD = 14, bestT = 0;
+  difs.forEach((d, i) => {
+    const dd = difData[i];
+    if (!isFinite(dd.tD)) return;
+    const up = interpHits(dd.hits, mx);
+    if (up == null) return;
+    const tc = dd.tD + up;
+    const dpx = Math.abs(rt(tc) - py);
+    if (dpx < bestD) { bestD = dpx; bestI = i; bestT = tc; }
+  });
+  hoverDif = bestI;
+  if (bestI >= 0) {
+    const d = difs[bestI];
+    recTip.innerHTML = "<div class='row'><span class='sw' style='background:" + DIF_COLORS[bestI] + "'></span><b>" +
+      d.name + " 绕射双曲线</b></div>来自绕射点 (x=" + Math.round(d.x) + " m, z=" + Math.round(d.z) +
+      " m)<br>此道 t=" + bestT.toFixed(2) + " s";
+    recTip.style.display = "block";
+    recTip.style.left = Math.min(px + 14, RW - 240) + "px";
+    recTip.style.top = (py + 14) + "px";
+    hoverInfo.innerHTML = "← 该支记录由绕射点 <b style='color:" + DIF_COLORS[bestI] + "'>" + d.name +
+      "</b> (x=" + Math.round(d.x) + " m, z=" + Math.round(d.z) + " m) 贡献";
+  } else { recTip.style.display = "none"; hoverInfo.textContent = ""; }
+  dirty = true;
+});
+rec.addEventListener("pointerleave", () => {
+  hoverDif = -1; recTip.style.display = "none"; hoverInfo.textContent = ""; dirty = true;
+});
+
+/* ================= 控制 ================= */
+function fire() { anim.t = 0; anim.playing = true; document.getElementById("btnPause").textContent = "⏸ 暂停"; }
+document.getElementById("btnFire").onclick = fire;
+document.getElementById("btnReset").onclick = () => { anim.t = 0; anim.playing = false; dirty = true; };
+document.getElementById("btnPause").onclick = e => {
+  anim.playing = !anim.playing;
+  e.target.textContent = anim.playing ? "⏸ 暂停" : "▶ 继续";
+};
+document.getElementById("speed").oninput = e => { anim.speed = e.target.value / 100; };
+document.getElementById("showRays").onchange = e => { showRays = e.target.checked; dirty = true; };
+document.getElementById("presetDefault").onclick = () => { defaultModel(); rebuild(); updateStatus(); fire(); };
+document.getElementById("presetCrit").onclick = () => { criticalModel(); rebuild(); updateStatus(); fire(); };
+
+/* ================= 主循环 ================= */
+const clock = document.getElementById("clock");
+let lastT = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+  if (anim.playing) {
+    anim.t += dt * anim.speed;
+    if (anim.t > T_MAX + 0.2) { anim.playing = false; document.getElementById("btnPause").textContent = "▶ 继续"; }
+    dirty = true;
+  }
+  if (dirty) {
+    drawSection(); drawRecord();
+    clock.textContent = "t = " + anim.t.toFixed(2) + " s";
+    dirty = false;
+  }
+  requestAnimationFrame(loop);
+}
+defaultModel(); rebuild(); updateStatus(); resize(); fire();
+requestAnimationFrame(loop);
+</script>
