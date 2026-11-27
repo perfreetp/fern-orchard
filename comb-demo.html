@@ -1,0 +1,584 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>工蜂筑脾演示</title>
+<style>
+  :root {
+    --panel: rgba(250, 241, 226, 0.94);
+    --ink: #3d2c17;
+    --wax: #e8b34b;
+    --line: rgba(61, 44, 23, 0.18);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden;
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; color: var(--ink); }
+  #scene { position: fixed; inset: 0; }
+  #panel {
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+    width: min(352px, calc(100vw - 24px));
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+    background: var(--panel);
+    border-radius: 14px;
+    padding: 14px 14px 12px;
+    box-shadow: 0 10px 34px rgba(0,0,0,.38);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  h1 { font-size: 16px; margin: 0 0 2px; }
+  .sub { font-size: 12px; opacity: .72; margin-bottom: 10px; line-height: 1.5; }
+  .row { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
+  button {
+    border: 1px solid var(--line);
+    background: linear-gradient(#fdf3df, #f0dcb4);
+    color: var(--ink);
+    font-size: 13px;
+    padding: 7px 11px;
+    border-radius: 9px;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  button:hover { filter: brightness(1.04); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: linear-gradient(#f4c265, #e2a23c); font-weight: 600; }
+  button.crit { background: linear-gradient(#f0a07a, #d96f4b); color: #fff; font-weight: 600; }
+  label.field { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
+  .slider-block { margin-bottom: 10px; }
+  input[type=range] { width: 100%; accent-color: #d98a2b; cursor: pointer; }
+  #tempSlider {
+    accent-color: auto;
+    background: linear-gradient(90deg,#5b8dd9,#7fc36b 38%,#e8b34b 62%,#d95f3b);
+    border-radius: 6px; height: 8px; outline: none;
+    -webkit-appearance: none; appearance: none;
+  }
+  #tempSlider::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px;
+    border-radius: 50%; background: #fff; border: 2px solid #8a5a1d; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+  #tempSlider::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; border: 2px solid #8a5a1d; }
+  .temp-read { display: flex; justify-content: space-between; font-size: 12px; margin-top: 3px; opacity: .85; }
+  .temp-read b { font-size: 15px; }
+  #status {
+    display: inline-block; font-size: 12.5px; font-weight: 600;
+    padding: 5px 10px; border-radius: 999px; margin-bottom: 8px;
+  }
+  .s-work { background: #d9edc6; color: #3c6317; }
+  .s-cold { background: #cfe0f5; color: #27508a; }
+  .s-pause { background: #ece3d2; color: #6b5636; }
+  .s-done { background: #f6d9a8; color: #8a5a1d; }
+  .info { font-size: 12px; line-height: 1.65; background: rgba(255,255,255,.55);
+    border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; margin-bottom: 10px; }
+  .info b { color: #8a5a1d; }
+  .legend { font-size: 11.5px; line-height: 1.7; opacity: .85; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+    vertical-align: middle; margin-right: 4px; }
+  .hint { font-size: 11.5px; opacity: .7; margin-top: 6px; line-height: 1.55; }
+  .scrub-label { display: flex; justify-content: space-between; font-size: 11.5px; opacity: .8; margin-top: 2px; }
+  kbd { background: #efe2c8; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 11px; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<div id="scene"></div>
+
+<div id="panel">
+  <h1>工蜂筑巢脾过程演示</h1>
+  <div class="sub">竖直脾基 · 中央中脊起步 · 六边形房格向两侧逐圈生长,相邻房格共用壁面</div>
+
+  <div id="status" class="s-work">筑造中</div>
+
+  <div class="row">
+    <button id="playBtn" class="primary">⏸ 暂停</button>
+    <button id="stepBack">⏮ 单步</button>
+    <button id="stepFwd">单步 ⏭</button>
+    <button id="resetBtn">↺ 重置</button>
+  </div>
+
+  <div class="slider-block">
+    <label class="field">生长进度(可拖到任意一步查看房格轮廓)</label>
+    <input id="scrub" type="range" min="0" max="100" step="1" value="0">
+    <div class="scrub-label"><span id="stepLabel">0 / 0</span><span id="cellLabel">已完成房格 0</span></div>
+  </div>
+
+  <div class="slider-block">
+    <label class="field">巢内温度</label>
+    <input id="tempSlider" type="range" min="29" max="35" step="0.1" value="34">
+    <div class="temp-read">
+      <span>当前 <b id="tempVal">34.0°C</b></span>
+      <span id="reqVal">本步所需 —</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <button id="presetBtn" class="crit">临界温度场景</button>
+    <button id="warmBtn">回暖至 34°C</button>
+  </div>
+
+  <div class="info" id="narration"></div>
+
+  <div class="legend">
+    <div><span class="sw" style="background:#c9a468;opacity:.5"></span>浅色细线:规划中的房格轮廓</div>
+    <div><span class="sw" style="background:#f3cf8f"></span>蜡黄色实体:已筑出的房底与侧壁(壁厚一致)</div>
+    <div><span class="sw" style="background:#d94b3b"></span>红色脉冲:当前待筑的缺口壁面</div>
+    <div class="hint" id="stats"></div>
+    <div class="hint">临界场景用法:预置温度正好卡在外侧圈所需阈值上,温度略低即停在外圈、留下未闭合缺口;调高 0.1–0.2°C,工蜂便从停下的那格把缺口补齐。空格播放/暂停,方向键单步。拖动可旋转视角,滚轮缩放。</div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ---------------- 参数 ---------------- */
+const HEX = 1;            // 六边形外接圆半径(=边长)
+const RINGS = 4;          // 圈数(0 为中脊上的起始格)
+const WALL_T = 0.10;      // 统一壁厚
+const DEPTH = 1.05;       // 房格深度(侧壁高度)
+const PLATE_T = 0.08;     // 房底厚度
+const FOUND = 0.125;      // 脾基半厚
+const FACES = [1, -1];    // 脾基正反两面
+
+/* ---------------- 场景 ---------------- */
+const container = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x241a12);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0.5, 2.2, 16.5);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 0, 0);
+
+scene.add(new THREE.HemisphereLight(0xfff2dc, 0x5a4326, 0.95));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
+keyLight.position.set(7, 11, 9);
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0xffd9a8, 0.45);
+fillLight.position.set(-8, -3, -7);
+scene.add(fillLight);
+
+/* ---------------- 材质与共享几何体 ---------------- */
+const matWall = new THREE.MeshStandardMaterial({ color: 0xf3cf8f, roughness: 0.62, metalness: 0.02 });
+const matPlate = new THREE.MeshStandardMaterial({ color: 0xe3b56c, roughness: 0.7 });
+const matFound = new THREE.MeshStandardMaterial({ color: 0xd8b072, roughness: 0.85 });
+const matRidge = new THREE.MeshStandardMaterial({ color: 0xc98f47, roughness: 0.7 });
+
+// 壁:长边沿 x,生长方向沿 z;正反两面各一份几何体,基部都在脾基表面
+const wallGeoF = new THREE.BoxGeometry(HEX * 1.06, WALL_T, DEPTH);
+wallGeoF.translate(0, 0, DEPTH / 2);
+const wallGeoB = new THREE.BoxGeometry(HEX * 1.06, WALL_T, DEPTH);
+wallGeoB.translate(0, 0, -DEPTH / 2);
+
+// 房底:平头六边形薄板
+const plateGeoF = new THREE.CylinderGeometry(HEX * 0.94, HEX * 0.94, PLATE_T, 6);
+plateGeoF.rotateX(Math.PI / 2);
+plateGeoF.translate(0, 0, FOUND + PLATE_T / 2);
+const plateGeoB = new THREE.CylinderGeometry(HEX * 0.94, HEX * 0.94, PLATE_T, 6);
+plateGeoB.rotateX(-Math.PI / 2);
+plateGeoB.translate(0, 0, -(FOUND + PLATE_T / 2));
+
+/* ---------------- 脾基与中脊 ---------------- */
+const foundation = new THREE.Mesh(new THREE.BoxGeometry(15.4, 18.6, FOUND * 2), matFound);
+scene.add(foundation);
+const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.24, 18.2, 0.46), matRidge);
+ridge.position.z = 0.04;
+scene.add(ridge);
+
+/* ---------------- 平头六边形网格(轴向坐标) ---------------- */
+const DIRS = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+const kkey = (q, r) => q + ',' + r;
+const ddist = (q, r) => (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2;
+const hexCX = q => 1.5 * HEX * q;
+const hexCY = (q, r) => Math.sqrt(3) * HEX * (r + q / 2);
+function hexVerts(x, y) {
+  const v = [];
+  for (let i = 0; i < 6; i++) {
+    const a = i * Math.PI / 3;
+    v.push(new THREE.Vector2(x + HEX * Math.cos(a), y + HEX * Math.sin(a)));
+  }
+  return v;
+}
+
+const cells = [];
+const cellMap = new Map();
+for (let q = -RINGS; q <= RINGS; q++) {
+  for (let r = -RINGS; r <= RINGS; r++) {
+    if (ddist(q, r) <= RINGS) {
+      const c = { q, r, d: ddist(q, r), x: hexCX(q), y: hexCY(q, r), key: kkey(q, r) };
+      c.verts = hexVerts(c.x, c.y);
+      cells.push(c);
+      cellMap.set(c.key, c);
+    }
+  }
+}
+// 由中脊向两侧、逐圈向外的筑造顺序
+cells.sort((a, b) => a.d - b.d || Math.abs(a.x) - Math.abs(b.x) || a.y - b.y || a.key.localeCompare(b.key));
+
+function edgeInfo(c, d) {
+  const a = c.verts[d], b = c.verts[(d + 1) % 6];
+  return {
+    mid: new THREE.Vector2((a.x + b.x) / 2, (a.y + b.y) / 2),
+    ang: Math.atan2(b.y - a.y, b.x - a.x),
+    a, b
+  };
+}
+function edgeId(c, d) {
+  const nq = c.q + DIRS[d][0], nr = c.r + DIRS[d][1];
+  const nk = kkey(nq, nr);
+  return cellMap.has(nk) ? [c.key, nk].sort().join('|') : c.key + '|o' + d;
+}
+
+/* ---------------- 微步骤:每格 = 筑底 + 逐道侧壁;壁面全局唯一 ---------------- */
+const edgeMap = new Map();
+const steps = [];
+
+for (const c of cells) {
+  // 房底(正反两面同步长出)
+  const plateMeshes = FACES.map((f, fi) => {
+    const m = new THREE.Mesh(fi === 0 ? plateGeoF : plateGeoB, matPlate);
+    m.position.set(c.x, c.y, 0);
+    m.userData.kind = 'plate';
+    m.visible = false; m.scale.set(0, 0, 1);
+    scene.add(m);
+    return m;
+  });
+  steps.push({ kind: 'plate', cell: c, ring: c.d, meshes: plateMeshes, label: '筑房底' });
+
+  // 六道侧壁:已被邻格筑过的共用壁直接跳过,保证不重叠、无缝隙
+  for (let d = 0; d < 6; d++) {
+    const id = edgeId(c, d);
+    let edge = edgeMap.get(id);
+    if (!edge) {
+      const info = edgeInfo(c, d);
+      const meshes = FACES.map((f, fi) => {
+        const m = new THREE.Mesh(fi === 0 ? wallGeoF : wallGeoB, matWall);
+        m.position.set(info.mid.x, info.mid.y, fi === 0 ? FOUND : -FOUND);
+        m.rotation.z = info.ang;
+        m.userData.kind = 'wall';
+        m.visible = false; m.scale.set(1, 1, 0);
+        scene.add(m);
+        return m;
+      });
+      const nq = c.q + DIRS[d][0], nr = c.r + DIRS[d][1];
+      const shared = cellMap.has(kkey(nq, nr));
+      edge = { ...info, meshes, shared };
+      edgeMap.set(id, edge);
+      steps.push({ kind: 'wall', cell: c, ring: c.d, k: d + 1,
+                   meshes, edge, shared, label: shared ? '筑共用侧壁' : '筑外缘侧壁' });
+    }
+  }
+}
+const TOTAL = steps.length;
+
+// 所需温度:随筑造进程逐格、逐壁单调升高(0.1°C 步进),越外圈门槛越高
+steps.forEach((s, i) => {
+  s.req = Math.round((30 + i / (TOTAL - 1) * 4) * 10) / 10;
+});
+
+/* ---------------- 规划轮廓(浅色ghost线) ---------------- */
+const ghostPts = [];
+for (const e of edgeMap.values()) {
+  ghostPts.push(new THREE.Vector3(e.a.x, e.a.y, FOUND + 0.5), new THREE.Vector3(e.b.x, e.b.y, FOUND + 0.5));
+  ghostPts.push(new THREE.Vector3(e.a.x, e.a.y, -(FOUND + 0.5)), new THREE.Vector3(e.b.x, e.b.y, -(FOUND + 0.5)));
+}
+const ghost = new THREE.LineSegments(
+  new THREE.BufferGeometry().setFromPoints(ghostPts),
+  new THREE.LineBasicMaterial({ color: 0xc9a468, transparent: true, opacity: 0.28 })
+);
+scene.add(ghost);
+
+/* ---------------- 待筑缺口高亮 ---------------- */
+const hlMatF = new THREE.LineBasicMaterial({ color: 0xd94b3b, transparent: true, opacity: 0.9 });
+const hlMatB = new THREE.LineBasicMaterial({ color: 0xd94b3b, transparent: true, opacity: 0.9 });
+const hlF = new THREE.Line(new THREE.BufferGeometry(), hlMatF);
+const hlB = new THREE.Line(new THREE.BufferGeometry(), hlMatB);
+scene.add(hlF, hlB);
+
+function setHighlight(step) {
+  const zF = FOUND + DEPTH + 0.05, zB = -(FOUND + DEPTH + 0.05);
+  let pts2;
+  if (!step) { pts2 = []; }
+  else if (step.kind === 'wall') pts2 = [step.edge.a, step.edge.b];
+  else pts2 = [...step.cell.verts, step.cell.verts[0]];
+  hlF.geometry.dispose(); hlB.geometry.dispose();
+  hlF.geometry = new THREE.BufferGeometry().setFromPoints(pts2.map(p => new THREE.Vector3(p.x, p.y, zF)));
+  hlB.geometry = new THREE.BufferGeometry().setFromPoints(pts2.map(p => new THREE.Vector3(p.x, p.y, zB)));
+}
+
+/* ---------------- 工蜂(简化造型) ---------------- */
+function makeBee() {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf0bd32, roughness: .55 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x2c1f10, roughness: .6 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.145, 18, 14), bodyMat);
+  body.scale.set(1.25, .9, .9);
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.092, 14, 10), darkMat);
+  head.position.set(0.19, 0.01, 0);
+  g.add(head);
+  for (const x of [-0.03, -0.13]) {
+    const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.115, 0.024, 8, 22), darkMat);
+    stripe.rotation.y = Math.PI / 2;
+    stripe.position.x = x;
+    g.add(stripe);
+  }
+  const wingMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+  const wL = new THREE.Mesh(new THREE.CircleGeometry(0.115, 14), wingMat);
+  const wR = wL.clone();
+  wL.position.set(-0.02, 0.12, 0.07); wR.position.set(-0.02, 0.12, -0.07);
+  wL.scale.set(0.7, 1.15, 1); wR.scale.set(0.7, 1.15, 1);
+  g.add(wL, wR);
+  g.userData = { wL, wR };
+  return g;
+}
+const bees = [];
+const beeTargets = [];
+for (let i = 0; i < 4; i++) {
+  const b = makeBee();
+  b.position.set((i - 1.5) * 0.5, 0, FOUND + DEPTH + 0.6);
+  scene.add(b);
+  bees.push(b);
+  beeTargets.push(b.position.clone());
+}
+function retargetBees() {
+  const s = steps[Math.min(currentStep, TOTAL - 1)];
+  const p = s.kind === 'wall' ? s.edge.mid : new THREE.Vector2(s.cell.x, s.cell.y);
+  bees.forEach((b, i) => {
+    const a = i * Math.PI / 2 + 0.6;
+    beeTargets[i].set(
+      p.x + Math.cos(a) * 0.42,
+      p.y + Math.sin(a) * 0.42,
+      FOUND + DEPTH + 0.35 + (isStalled() ? 0.65 : 0)
+    );
+  });
+}
+
+/* ---------------- 生长动画与步进状态 ---------------- */
+const tweens = [];
+function grow(mesh, dur = 0.42) { tweens.push({ mesh, t: 0, dur }); }
+let currentStep = 0;
+let playing = true;
+let temperature = 34.0;
+let acc = 0;
+
+function isStalled() {
+  return playing && currentStep < TOTAL && temperature < steps[currentStep].req;
+}
+function activate(i, animate) {
+  for (const m of steps[i].meshes) {
+    m.visible = true;
+    if (animate) grow(m);
+    else if (m.userData.kind === 'plate') m.scale.set(1, 1, 1);
+    else m.scale.set(1, 1, 1);
+  }
+}
+function deactivate(i) {
+  for (const m of steps[i].meshes) {
+    m.visible = false;
+    if (m.userData.kind === 'plate') m.scale.set(0, 0, 1);
+    else m.scale.set(1, 1, 0);
+  }
+}
+function advance() {
+  activate(currentStep, true);
+  currentStep++;
+  afterStepChange();
+}
+function retreat() {
+  if (currentStep === 0) return;
+  currentStep--;
+  deactivate(currentStep);
+  afterStepChange();
+}
+function jumpTo(n) {
+  tweens.length = 0;
+  currentStep = THREE.MathUtils.clamp(n, 0, TOTAL);
+  steps.forEach((s, i) => {
+    const on = i < currentStep;
+    for (const m of s.meshes) {
+      m.visible = on;
+      if (m.userData.kind === 'plate') m.scale.set(on ? 1 : 0, on ? 1 : 0, 1);
+      else m.scale.set(1, 1, on ? 1 : 0);
+    }
+  });
+  afterStepChange();
+}
+function afterStepChange() {
+  setHighlight(currentStep < TOTAL ? steps[currentStep] : null);
+  retargetBees();
+  refreshUI();
+}
+
+/* ---------------- UI ---------------- */
+const $ = id => document.getElementById(id);
+const playBtn = $('playBtn'), scrub = $('scrub'), tempSlider = $('tempSlider');
+scrub.max = TOTAL;
+
+function refreshUI() {
+  scrub.value = currentStep;
+  $('stepLabel').textContent = `${currentStep} / ${TOTAL}`;
+  let doneCells = 0;
+  for (let i = 0; i < currentStep; i++) if (steps[i].kind === 'plate') doneCells++;
+  $('cellLabel').textContent = `已完成房格 ${doneCells} / ${cells.length}`;
+  $('tempVal').textContent = temperature.toFixed(1) + '°C';
+  tempSlider.value = temperature;
+
+  const st = $('status');
+  if (currentStep >= TOTAL) {
+    st.textContent = '巢脾筑造完成'; st.className = 's-done';
+    $('reqVal').textContent = '本步所需 —';
+  } else if (isStalled()) {
+    st.textContent = '低温停滞 · 回暖后从当前房格续筑'; st.className = 's-cold';
+    $('reqVal').innerHTML = `本步所需 <b>${steps[currentStep].req.toFixed(1)}°C</b>`;
+  } else if (!playing) {
+    st.textContent = '已暂停'; st.className = 's-pause';
+    $('reqVal').innerHTML = `本步所需 <b>${steps[currentStep].req.toFixed(1)}°C</b>`;
+  } else {
+    st.textContent = '筑造中 · 温度越高筑得越快'; st.className = 's-work';
+    $('reqVal').innerHTML = `本步所需 <b>${steps[currentStep].req.toFixed(1)}°C</b>`;
+  }
+  playBtn.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+
+  const s = currentStep < TOTAL ? steps[currentStep] : steps[TOTAL - 1];
+  const c = s.cell;
+  $('narration').innerHTML =
+    `第 <b>${s.ring}</b> 圈 · 房格 (${c.q}, ${c.r})<br>` +
+    (currentStep >= TOTAL ? '全部房格已闭合' : `下一步:<b>${s.label}</b>${s.kind === 'wall' ? `(第 ${s.k} 道壁)` : ''}`);
+}
+
+function setPlaying(p) { playing = p; refreshUI(); retargetBees(); }
+playBtn.onclick = () => setPlaying(!playing);
+$('stepFwd').onclick = () => { setPlaying(false); advance(); };
+$('stepBack').onclick = () => { setPlaying(false); retreat(); };
+$('resetBtn').onclick = () => { setPlaying(false); jumpTo(0); };
+scrub.oninput = () => { setPlaying(false); jumpTo(parseInt(scrub.value, 10)); };
+tempSlider.oninput = () => {
+  temperature = parseFloat(tempSlider.value);
+  acc = 0;
+  refreshUI();
+  retargetBees();
+};
+
+// 临界温度:取最外圈靠后一档温度台阶上的第一道未筑侧壁(同一档阈值被多道壁共享),
+// 预置温度恰好低一档(0.1°C),播放到此即停在外圈、留下未闭合缺口;调高 0.1°C 从该格补齐
+const r4First = steps.find(s => s.ring === RINGS && s.kind === 'wall');
+const plateauReq = r4First.req + 0.9;                          // 外圈靠后的一档温度台阶
+const plateauStart = steps.findIndex(s => s.ring === RINGS && s.kind === 'wall' && s.req >= plateauReq);
+const candidate = steps[plateauStart];
+const presetTemp = candidate.req - 0.1;                       // 滑块 0.1°C 精度下精确低于阈值
+$('presetBtn').onclick = () => {
+  jumpTo(0);
+  temperature = presetTemp;
+  tempSlider.value = temperature;
+  setPlaying(true);
+};
+$('warmBtn').onclick = () => {
+  temperature = 34.0;
+  tempSlider.value = temperature;
+  if (currentStep >= TOTAL) jumpTo(0);
+  setPlaying(true);
+};
+
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+  if (e.code === 'ArrowRight') { setPlaying(false); advance(); }
+  if (e.code === 'ArrowLeft') { setPlaying(false); retreat(); }
+});
+
+$('stats').textContent =
+  `共 ${cells.length} 个房格、${edgeMap.size} 道壁面;每道壁只筑一次,由相邻房格共用,壁厚统一 ${WALL_T.toFixed(2)}。`;
+
+/* ---------------- 主循环 ---------------- */
+const clock = new THREE.Clock();
+const T_RATE_LO = 29.5, T_RATE_HI = 34.5;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+  controls.update();
+
+  // 生长补间
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    const tw = tweens[i];
+    tw.t += dt;
+    const e = THREE.MathUtils.clamp(tw.t / tw.dur, 0, 1);
+    const ease = 1 - Math.pow(1 - e, 3);
+    if (tw.mesh.userData.kind === 'plate') tw.mesh.scale.set(ease, ease, 1);
+    else tw.mesh.scale.set(1, 1, ease);
+    if (e >= 1) tweens.splice(i, 1);
+  }
+
+  // 温度驱动的自动播放:低于本步所需温度即原地停滞,回暖后从同一格续筑
+  if (playing && currentStep < TOTAL) {
+    const req = steps[currentStep].req;
+    if (temperature >= req) {
+      const u = THREE.MathUtils.clamp((temperature - T_RATE_LO) / (T_RATE_HI - T_RATE_LO), 0, 1);
+      acc += dt * (0.5 + u * u * 5.2);
+      while (acc >= 1 && currentStep < TOTAL && temperature >= steps[currentStep].req) {
+        acc -= 1;
+        advance();
+      }
+      if (currentStep < TOTAL && temperature < steps[currentStep].req) acc = 0;
+    } else {
+      acc = 0;
+    }
+  }
+
+  // 缺口高亮脉冲:停滞时红色急促,正常时柔和
+  const stalled = isStalled();
+  if (currentStep < TOTAL) {
+    const op = stalled ? 0.55 + 0.42 * Math.sin(t * 7) : 0.30 + 0.18 * Math.sin(t * 3);
+    hlMatF.opacity = hlMatB.opacity = op;
+    hlMatF.color.setHex(stalled ? 0xd94b3b : 0xe8b34b);
+    hlMatB.color.setHex(stalled ? 0xd94b3b : 0xe8b34b);
+  } else {
+    hlMatF.opacity = hlMatB.opacity = 0;
+  }
+
+  // 工蜂飞行与振翅
+  const beesSlow = stalled || currentStep >= TOTAL;
+  bees.forEach((b, i) => {
+    const tgt = beeTargets[i];
+    const k = 1 - Math.exp(-(beesSlow ? 1.2 : 3.2) * dt);
+    b.position.lerp(tgt, k);
+    const wob = Math.sin(t * 2.2 + i * 1.7) * 0.12;
+    b.position.y += wob * dt * 4;
+    const look = b.position.clone().add(tgt.clone().sub(b.position).multiplyScalar(10));
+    if (tgt.distanceToSquared(b.position) > 0.002) b.lookAt(look);
+    const flap = Math.sin(t * (beesSlow ? 14 : 32) + i) * 0.7;
+    b.userData.wL.rotation.z = flap;
+    b.userData.wR.rotation.z = -flap;
+  });
+
+  renderer.render(scene, camera);
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+setHighlight(steps[0]);
+retargetBees();
+refreshUI();
+animate();
+</script>
