@@ -1,0 +1,454 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>热储层剖切演示</title>
+<style>
+:root{
+  --bg:#f2efe7; --panel:#ffffff; --fg:#2b2b26; --muted:#6f6a5e;
+  --accent:#b3541e; --line:#ddd6c8; --btn:#ece6d8; --btn-fg:#2b2b26;
+  --paper:#fbfaf5;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1d1c19; --panel:#27261f; --fg:#e8e4d8; --muted:#a39d8d;
+    --accent:#e07b3a; --line:#3a382f; --btn:#33312a; --btn-fg:#e8e4d8;
+    --paper:#24231e; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1d1c19; --panel:#27261f; --fg:#e8e4d8; --muted:#a39d8d;
+  --accent:#e07b3a; --line:#3a382f; --btn:#33312a; --btn-fg:#e8e4d8;
+  --paper:#24231e; color-scheme: dark;
+}
+*{ box-sizing:border-box }
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  padding-block:14px;
+  max-width:1180px; margin:0 auto;
+}
+h1{ font-size:20px; margin:0 0 2px }
+.sub{ color:var(--muted); font-size:13px; margin:0 0 12px }
+#stage-wrap{
+  position:relative; border:1px solid var(--line); border-radius:10px;
+  background:var(--paper); overflow:hidden;
+  height:clamp(420px, 60vh, 640px);
+}
+#stage{ position:absolute; inset:0 }
+#info{
+  position:absolute; top:10px; right:10px; width:292px; max-width:calc(100% - 20px);
+  background:var(--panel); border:1px solid var(--line); border-radius:8px;
+  padding:10px 12px; font-size:12.5px; line-height:1.55; box-shadow:0 2px 10px rgba(0,0,0,.08);
+}
+#info b{ color:var(--accent) }
+#info ol{ margin:4px 0 0; padding-left:18px }
+#info .row{ margin:3px 0 }
+#controls{
+  display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center;
+  margin-top:12px; padding:10px 12px; background:var(--panel);
+  border:1px solid var(--line); border-radius:10px;
+}
+#controls label{ display:flex; align-items:center; gap:8px; font-size:13px; flex:1 1 320px; min-width:0 }
+#cut{ flex:1; min-width:120px; accent-color:var(--accent) }
+#pct{ font-variant-numeric:tabular-nums; color:var(--muted); width:42px }
+.btns{ display:flex; flex-wrap:wrap; gap:8px }
+button{
+  font:inherit; font-size:13px; cursor:pointer;
+  background:var(--btn); color:var(--btn-fg);
+  border:1px solid var(--line); border-radius:7px; padding:6px 12px;
+}
+button.active{ background:var(--accent); color:#fff; border-color:var(--accent) }
+#legend{
+  display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:10px;
+  font-size:12.5px; color:var(--muted); align-items:center;
+}
+.chip{ display:inline-flex; align-items:center; gap:6px }
+.sw{ width:14px; height:14px; border-radius:3px; border:1px solid rgba(0,0,0,.25); display:inline-block }
+.sw.dash{ height:0; border:none; border-top:3px dashed #c0392b; border-radius:0 }
+@media (max-width:700px){
+  #info{ position:static; width:auto; margin:10px; box-shadow:none }
+  #stage-wrap{ height:auto }
+  #stage{ position:relative; height:430px }
+}
+</style>
+
+<header>
+  <h1>热储层地质体剖切演示</h1>
+  <p class="sub">拖动剖切滑块从一侧切入 · 点击断层带查看连通层位与热水通道 · 切换正/逆断层对比错动方向</p>
+</header>
+
+<div id="stage-wrap">
+  <div id="stage"></div>
+  <aside id="info"></aside>
+</div>
+
+<div id="controls">
+  <label>剖切滑块
+    <input type="range" id="cut" min="0" max="100" value="0" step="0.5">
+    <span id="pct">0%</span>
+  </label>
+  <div class="btns">
+    <button id="bNormal" class="active">正断层</button>
+    <button id="bReverse">逆断层</button>
+    <button id="bMid">切至热储层中部</button>
+    <button id="bReset">重置</button>
+  </div>
+</div>
+
+<div id="legend">
+  <span class="chip"><span class="sw" style="background:#8a9a6b"></span>盖层 · 泥岩</span>
+  <span class="chip"><span class="sw" style="background:#d99a4e"></span>热储层 · 砂岩</span>
+  <span class="chip"><span class="sw" style="background:#a9a2b8"></span>基底 · 花岗岩</span>
+  <span class="chip"><span class="sw" style="background:#c0392b"></span>断层带</span>
+  <span class="chip"><span class="sw dash"></span>热水上升通道</span>
+  <span class="chip"><span class="sw" style="background:#1f6fb2"></span>采井（出水段）</span>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/konva/9.3.16/konva.min.js"></script>
+<script>
+(function(){
+"use strict";
+const FONT = 'system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif';
+
+/* ---------- 地质与几何参数 ---------- */
+const P = {
+  surfY: 64,          // 地表基准 y
+  capBot: 170,        // 盖层底界（相对地表, px）
+  resBot: 330,        // 热储层底界
+  dip: 0.045,         // 地层倾角（每 px 水平距离的落差）
+  faultFrac: 0.58,    // 断层地表出露位置（剖面宽度比例）
+  faultEndFrac: 0.80, // 断层在剖面底部的位置（比例）→ 决定断层面倾角
+  zoneW: 18,          // 断层带宽度
+  throwTop: 18,       // 浅部错距 px
+  throwBot: 85,       // 深部错距 px（错距随深度增大）
+  lag: 48,            // 剖切时各层错开的距离（深部层滞后揭示）
+  mpp: 4,             // 比例尺: 1px = 4 m
+  wellFrac: 0.30,     // 采井位置（比例，位于断层西盘/下盘）
+};
+
+let stage, layer, W, H, left, right, bottom;
+let cutT = 0, faultType = 'normal', faultOn = false;
+let flowAnim = null, flowArrows = [];
+const R = {}; // 需要动态更新的节点引用
+
+const surf = x => P.surfY + 8*Math.sin(x*0.008) + 4*Math.sin(x*0.021 + 1.3);
+const cutX = () => left + cutT*(right - left);
+const sign = () => faultType === 'normal' ? 1 : -1; // 正断层: 上盘(东盘)下降
+const xf = y => left + P.faultFrac*(right-left) + (y - P.surfY) * faultCot();
+const faultCot = () => (P.faultEndFrac - P.faultFrac) * (right-left) / (bottom - P.surfY);
+function throwAt(y){
+  let t = (y - P.surfY) / (bottom - P.surfY);
+  t = Math.max(0, Math.min(1, t));
+  return P.throwTop + (P.throwBot - P.throwTop) * t;
+}
+// 未受断层影响的层界深度（off = 相对地表的埋深偏移）
+const boundY0 = (off, x) => surf(x) + off + P.dip * (x - (left+right)/2);
+
+/* ---------- 岩性纹理 ---------- */
+function makePattern(bg, draw){
+  const c = document.createElement('canvas'); c.width = 32; c.height = 32;
+  const g = c.getContext('2d');
+  g.fillStyle = bg; g.fillRect(0,0,32,32); draw(g);
+  return c;
+}
+const patCap = makePattern('#8a9a6b', g => {           // 泥岩: 水平短线
+  g.strokeStyle = 'rgba(50,60,35,.45)'; g.lineWidth = 1.5;
+  [[2,6,12,6],[18,6,30,6],[6,14,16,14],[22,14,32,14],[0,22,10,22],[16,22,28,22],[8,30,20,30]]
+    .forEach(l => { g.beginPath(); g.moveTo(l[0],l[1]); g.lineTo(l[2],l[3]); g.stroke(); });
+});
+const patRes = makePattern('#d99a4e', g => {           // 砂岩: 点状
+  g.fillStyle = 'rgba(120,66,15,.5)';
+  for(let r=0;r<4;r++) for(let c=0;c<4;c++){
+    g.beginPath();
+    g.arc(c*8 + (r%2?4:0) + 2, r*8 + 3, 1.6, 0, Math.PI*2); g.fill();
+  }
+});
+const patBase = makePattern('#a9a2b8', g => {          // 花岗岩: 十字
+  g.strokeStyle = 'rgba(70,66,95,.55)'; g.lineWidth = 1.4;
+  [[8,8],[24,24],[24,8],[8,24]].forEach(p => {
+    g.beginPath(); g.moveTo(p[0]-3,p[1]); g.lineTo(p[0]+3,p[1]);
+    g.moveTo(p[0],p[1]-3); g.lineTo(p[0],p[1]+3); g.stroke();
+  });
+});
+const patFault = makePattern('#c0392b', g => {         // 断层带: 斜线 hatch
+  g.strokeStyle = 'rgba(255,235,220,.55)'; g.lineWidth = 2;
+  for(let i=-32;i<64;i+=8){ g.beginPath(); g.moveTo(i,32); g.lineTo(i+32,0); g.stroke(); }
+});
+
+const LAYERS = [
+  { key:'cap',  name:'盖层 · 泥岩',     off0:0,        off1:P.capBot, color:'#8a9a6b', pat:patCap  },
+  { key:'res',  name:'热储层 · 砂岩',   off0:P.capBot, off1:P.resBot, color:'#d99a4e', pat:patRes  },
+  { key:'base', name:'基底 · 花岗岩',   off0:P.resBot, off1:null,     color:'#a9a2b8', pat:patBase }, // off1=null → 到剖面底
+];
+
+/* ---------- 几何构造 ---------- */
+function boundaryPairs(off){
+  const pts = [];
+  for(let x=left; x<=right; x+=4){
+    const y0 = boundY0(off, x);
+    const hw = x > xf(y0);                       // 断层倾向一侧 = 上盘
+    pts.push([x, y0 + (hw ? sign()*throwAt(y0) : 0)]);
+  }
+  return pts;
+}
+const flat = arr => arr.reduce((o,p) => (o.push(p[0],p[1]), o), []);
+
+function clipGroup(lagUnits){
+  return new Konva.Group({ clipFunc(ctx){
+    ctx.rect(0, 0, Math.max(0, cutX() - lagUnits*P.lag), H);
+  }});
+}
+
+/* ---------- 信息面板 ---------- */
+const infoEl = document.getElementById('info');
+const hintHTML = `
+  <b>操作提示</b>
+  <ol>
+    <li>拖动下方滑块，剖面自左向右逐步切入，岩层按埋深一层层展开</li>
+    <li>切到红色断层带后 <b>点击断层</b>，查看它连通了哪些层、热水上升通道方向</li>
+    <li>切换「正断层 / 逆断层」，对比两侧地层错动方向与热储层被错断的位置</li>
+    <li>点「切至热储层中部」，看采井井底与热储层的接触关系</li>
+  </ol>`;
+function faultHTML(){
+  const normal = faultType === 'normal';
+  const tRes = Math.round(throwAt(P.surfY + P.capBot) * P.mpp);
+  const tBas = Math.round(throwAt(P.surfY + P.resBot) * P.mpp);
+  return `
+    <b>断层 F₁ · ${normal?'正断层':'逆断层'}</b>
+    <div class="row">错动方向：上盘（东盘）相对<b>${normal?'下降':'上升'}</b>，下盘（西盘）相对${normal?'上升':'下降'}</div>
+    <div class="row">切穿层位：盖层 → 热储层 → 基底（全层序被错断）</div>
+    <div class="row">错距：热储层顶界 ≈ ${tRes} m → 基底顶界 ≈ ${tBas} m（随深度增大）</div>
+    <div class="row">连通关系：断层带连通 <b>基底深部 — 热储层 — 盖层底部</b>；热储层在断层处被错断，两盘热储层错开约 ${tRes} m</div>
+    <div class="row">热水通道：基底深部热水<b>沿断层带向上运移</b>（红色虚线箭头），进入热储层后转为侧向分流；盖层被错断处可局部向上渗漏</div>
+    <div class="row" style="color:var(--muted)">再点一次断层带可收起</div>`;
+}
+function setInfo(){ infoEl.innerHTML = faultOn ? faultHTML() : hintHTML; }
+
+/* ---------- 场景构建 ---------- */
+function build(){
+  W = document.getElementById('stage').clientWidth;
+  H = document.getElementById('stage').clientHeight;
+  if(!stage){
+    stage = new Konva.Stage({ container:'stage', width:W, height:H });
+    layer = new Konva.Layer(); stage.add(layer);
+  } else {
+    stage.size({ width:W, height:H });
+    layer.destroyChildren();
+  }
+  if(flowAnim){ flowAnim.stop(); flowAnim = null; }
+  flowArrows = [];
+  left = 64; right = W - 24; bottom = H - 28;
+
+  /* 天空 */
+  const skyPts = [];
+  for(let x=left-40; x<=right+24; x+=6) skyPts.push([x, surf(x)]);
+  layer.add(new Konva.Line({
+    points: flat(skyPts.concat([[right+24,0],[left-40,0]])),
+    closed:true, fill:'#e6f2fa', listening:false,
+  }));
+
+  /* 未剖切地块（初始只见地表） */
+  const covPts = [];
+  for(let x=left-40; x<=right+24; x+=6) covPts.push([x, surf(x)]);
+  layer.add(new Konva.Line({
+    points: flat(covPts.concat([[right+24,bottom],[left-40,bottom]])),
+    closed:true, fill:'#efe9db', listening:false,
+  }));
+  layer.add(new Konva.Text({
+    x:left, y:P.surfY+110, width:right-left, align:'center',
+    text:'地下尚未揭示 —— 拖动滑块从左侧切入', fontSize:14, fontFamily:FONT,
+    fill:'#9a927e', listening:false,
+  }));
+
+  /* 岩层（按埋深顺序错开揭示） */
+  LAYERS.forEach((L, i) => {
+    const g = clipGroup(i);
+    const off1 = L.off1 === null ? bottom - P.surfY + 20 : L.off1;
+    const top = boundaryPairs(L.off0), bot = boundaryPairs(off1);
+    g.add(new Konva.Line({
+      points: flat(top.concat(bot.reverse())),
+      closed:true, fill:L.color, fillPatternImage:L.pat, fillPatternRepeat:'repeat',
+      stroke:'rgba(60,50,30,.5)', strokeWidth:1, listening:false,
+    }));
+    const midOff = (L.off0 + Math.min(off1, L.off0+150)) / 2;
+    g.add(new Konva.Text({
+      x:left+14, y:boundY0(midOff, left+14) - 8,
+      text:L.name, fontSize:13, fontStyle:'bold', fontFamily:FONT,
+      fill:'rgba(40,32,20,.75)', listening:false,
+    }));
+    layer.add(g);
+  });
+
+  /* 断层带 */
+  const fg = clipGroup(2.6);
+  const fL = [], fR = [];
+  for(let y=P.surfY-16; y<=bottom+12; y+=8){
+    fL.push([xf(y)-P.zoneW/2, y]); fR.push([xf(y)+P.zoneW/2, y]);
+  }
+  const band = new Konva.Line({
+    points: flat(fL.concat(fR.reverse())),
+    closed:true, fill:'#c0392b', fillPatternImage:patFault, fillPatternRepeat:'repeat',
+    stroke: faultOn ? '#6e1a0d' : '#8e2f1f', strokeWidth: faultOn ? 3 : 1.5,
+  });
+  band.on('click tap', () => {
+    faultOn = !faultOn;
+    band.stroke(faultOn ? '#6e1a0d' : '#8e2f1f');
+    band.strokeWidth(faultOn ? 3 : 1.5);
+    flowGroup.visible(faultOn);
+    if(faultOn && flowAnim) flowAnim.start(); else if(flowAnim) flowAnim.stop();
+    setInfo(); layer.batchDraw();
+  });
+  band.on('mouseenter', () => stage.container().style.cursor = 'pointer');
+  band.on('mouseleave', () => stage.container().style.cursor = 'default');
+  fg.add(band);
+  R.band = band;
+
+  // 断层编号
+  fg.add(new Konva.Text({
+    x:xf(P.surfY+26)+12, y:P.surfY+16, text:'F₁', fontSize:15, fontStyle:'bold',
+    fontFamily:FONT, fill:'#8e2f1f', listening:false,
+  }));
+
+  // 两盘相对运动方向箭头（正/逆断层对比的关键）
+  const yM = P.surfY + 235;
+  const up = faultType === 'normal' ? -1 : 1; // 上盘(右)运动方向: 正断层向下
+  const mkArrow = (x, dir, color) => new Konva.Arrow({
+    points:[x, yM - dir*20, x, yM + dir*20],
+    pointerLength:7, pointerWidth:7, stroke:color, fill:color, strokeWidth:2.5, listening:false,
+  });
+  fg.add(mkArrow(xf(yM) - P.zoneW/2 - 16, -up, '#4a4a4a')); // 下盘(西)
+  fg.add(mkArrow(xf(yM) + P.zoneW/2 + 16,  up, '#4a4a4a')); // 上盘(东)
+
+  // 错距标注（随深度变化）
+  [[P.surfY+P.capBot, '热储层顶'], [P.surfY+P.resBot, '基底顶']].forEach(([y]) => {
+    fg.add(new Konva.Text({
+      x:xf(y)+P.zoneW/2+8, y:y-6, fontSize:11, fontFamily:FONT, fill:'#7a2d1f',
+      text:`错距≈${Math.round(throwAt(y)*P.mpp)} m`, listening:false,
+    }));
+  });
+
+  // 热水上升通道（点击断层后显示）
+  const flowGroup = new Konva.Group({ visible:faultOn, listening:false });
+  const seg = (y1, y2) => { // 沿断层面向上
+    const a = new Konva.Arrow({
+      points:[xf(y2), y2, xf(y1), y1],
+      pointerLength:9, pointerWidth:8, stroke:'#ff5a3c', fill:'#ff5a3c',
+      strokeWidth:3, dash:[10,6],
+    });
+    flowArrows.push(a); flowGroup.add(a);
+  };
+  seg(P.surfY+P.resBot+60, P.surfY+P.resBot-30);   // 基底 → 热储层底
+  seg(P.surfY+P.capBot+30, P.surfY+P.capBot-60);   // 热储层 → 盖层底部
+  const yLat = P.surfY + (P.capBot+P.resBot)/2;    // 热储层内侧向分流
+  const lat = new Konva.Arrow({
+    points:[xf(yLat)-P.zoneW/2-4, yLat, xf(yLat)-P.zoneW/2-78, yLat],
+    pointerLength:9, pointerWidth:8, stroke:'#ff5a3c', fill:'#ff5a3c',
+    strokeWidth:3, dash:[10,6],
+  });
+  flowArrows.push(lat); flowGroup.add(lat);
+  flowGroup.add(new Konva.Text({
+    x:xf(yLat)-P.zoneW/2-150, y:yLat-20, text:'热水侧向分流', fontSize:11,
+    fontFamily:FONT, fill:'#c0392b', listening:false,
+  }));
+  fg.add(flowGroup);
+  layer.add(fg);
+
+  flowAnim = new Konva.Animation(f => {
+    const o = -(f.time/45) % 16;
+    flowArrows.forEach(a => a.dashOffset(o));
+  }, layer);
+  if(faultOn) flowAnim.start();
+
+  /* 采井（下盘，井底止于热储层中部） */
+  const wg = clipGroup(1.6);
+  const xw = left + P.wellFrac*(right-left);
+  const wTop = surf(xw);
+  const resTopY = boundY0(P.capBot, xw), resBotY = boundY0(P.resBot, xw);
+  const wellBot = (resTopY + resBotY) / 2;      // 井底: 热储层中部
+  wg.add(new Konva.Line({ points:[xw, wTop, xw, resTopY+4], stroke:'#3a3a3a', strokeWidth:4, listening:false }));
+  wg.add(new Konva.Line({ points:[xw, resTopY+4, xw, wellBot], stroke:'#1f6fb2', strokeWidth:7, listening:false }));
+  wg.add(new Konva.Circle({ x:xw, y:wellBot, radius:3.5, fill:'#1f6fb2', listening:false }));
+  wg.add(new Konva.Rect({ x:xw-6, y:wTop-8, width:12, height:8, fill:'#3a3a3a', listening:false }));
+  wg.add(new Konva.Text({ x:xw-16, y:wTop-26, text:'采井', fontSize:12, fontStyle:'bold', fontFamily:FONT, fill:'#333', listening:false }));
+  wg.add(new Konva.Text({ x:xw+10, y:(resTopY+wellBot)/2-6, text:'出水段', fontSize:11, fontFamily:FONT, fill:'#1f6fb2', listening:false }));
+  wg.add(new Konva.Line({ points:[xw+4, wellBot, xw+34, wellBot], stroke:'#7a7a7a', strokeWidth:1, listening:false }));
+  wg.add(new Konva.Text({ x:xw+36, y:wellBot-7, text:'井底 · 热储层中部', fontSize:11, fontFamily:FONT, fill:'#7a4a12', listening:false }));
+  const wUp = new Konva.Arrow({
+    points:[xw-9, wellBot-14, xw-9, wTop+34],
+    pointerLength:7, pointerWidth:6, stroke:'#c0392b', fill:'#c0392b', strokeWidth:2, dash:[6,4], listening:false,
+  });
+  wg.add(wUp);
+  wg.add(new Konva.Text({ x:xw-58, y:wTop+40, text:'热水采出', fontSize:11, fontFamily:FONT, fill:'#c0392b', listening:false }));
+  layer.add(wg);
+
+  /* 深度标尺 */
+  for(let y=P.surfY; y<=bottom-10; y+=100){
+    layer.add(new Konva.Line({ points:[left-6, y, left, y], stroke:'#8a8474', strokeWidth:1, listening:false }));
+    layer.add(new Konva.Text({
+      x:0, y:y-6, width:left-10, align:'right', fontSize:10, fontFamily:FONT,
+      text:`${Math.round((y-P.surfY)*P.mpp)} m`, fill:'#8a8474', listening:false,
+    }));
+  }
+
+  /* 地表线 */
+  const sPts = [];
+  for(let x=left-40; x<=right+24; x+=6) sPts.push(x, surf(x));
+  layer.add(new Konva.Line({ points:sPts, stroke:'#5b4a2f', strokeWidth:2.5, listening:false }));
+  layer.add(new Konva.Text({ x:left-36, y:surf(left-36)-22, text:'地表', fontSize:12, fontFamily:FONT, fill:'#5b4a2f', listening:false }));
+  layer.add(new Konva.Text({ x:left-6,  y:surf(left)-30,  text:'A',  fontSize:14, fontStyle:'bold', fontFamily:FONT, fill:'#5b4a2f', listening:false }));
+  layer.add(new Konva.Text({ x:right-2, y:surf(right)-30, text:'A′', fontSize:14, fontStyle:'bold', fontFamily:FONT, fill:'#5b4a2f', listening:false }));
+
+  /* 剖切面指示线 */
+  const cutGroup = new Konva.Group({ x:cutX(), visible:cutT > 0.004, listening:false });
+  cutGroup.add(new Konva.Line({ points:[0, P.surfY-24, 0, bottom], stroke:'#333', strokeWidth:1.5, dash:[7,5] }));
+  cutGroup.add(new Konva.Text({ x:5, y:P.surfY-42, text:'剖切面', fontSize:11, fontFamily:FONT, fill:'#333' }));
+  layer.add(cutGroup);
+  R.cutGroup = cutGroup;
+
+  setInfo();
+  layer.draw();
+}
+
+/* ---------- 交互 ---------- */
+const cutEl = document.getElementById('cut');
+const pctEl = document.getElementById('pct');
+function syncCut(){
+  cutEl.value = Math.round(cutT*200)/2;
+  pctEl.textContent = Math.round(cutT*100) + '%';
+  if(R.cutGroup){ R.cutGroup.x(cutX()); R.cutGroup.visible(cutT > 0.004); }
+  if(layer) layer.batchDraw();
+}
+cutEl.addEventListener('input', () => { cutT = cutEl.value/100; syncCut(); });
+
+function tweenCut(target){
+  const start = cutT, t0 = performance.now();
+  (function step(t){
+    const k = Math.min(1, (t - t0)/650);
+    cutT = start + (target - start) * (k*k*(3-2*k));
+    syncCut();
+    if(k < 1) requestAnimationFrame(step);
+  })(t0);
+}
+
+const bN = document.getElementById('bNormal'), bR = document.getElementById('bReverse');
+function setFault(type){
+  if(faultType === type) return;
+  faultType = type;
+  bN.classList.toggle('active', type==='normal');
+  bR.classList.toggle('active', type==='reverse');
+  build();
+}
+bN.addEventListener('click', () => setFault('normal'));
+bR.addEventListener('click', () => setFault('reverse'));
+document.getElementById('bMid').addEventListener('click', () => {
+  const xw = left + P.wellFrac*(right-left);
+  tweenCut(Math.min(1, (xw + 2*P.lag + 30 - left) / (right-left)));
+});
+document.getElementById('bReset').addEventListener('click', () => tweenCut(0));
+
+let rsz;
+window.addEventListener('resize', () => { clearTimeout(rsz); rsz = setTimeout(build, 150); });
+
+build();
+})();
+</script>
