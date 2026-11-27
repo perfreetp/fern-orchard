@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>蜂场 · 蜂路模拟</title>
+<style>
+  :root { --panel: rgba(18,26,18,.82); --line: rgba(255,255,255,.14); --fg:#eef5e6; --dim:#b9c7ad; --accent:#ffd34d; --red:#ff6b5e; --green:#8ce08c; }
+  * { box-sizing: border-box; }
+  html,body { margin:0; height:100%; overflow:hidden; background:#20331f; font-family: "Segoe UI","Microsoft YaHei",system-ui,sans-serif; }
+  #stage { position:fixed; inset:0; }
+  #hud {
+    position:fixed; left:14px; top:14px; z-index:10; width:300px; max-height:calc(100vh - 28px); overflow:auto;
+    background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:12px;
+    padding:14px 14px 12px; backdrop-filter: blur(6px); font-size:13px; line-height:1.5;
+  }
+  #hud h1 { font-size:15px; margin:0 0 6px; letter-spacing:.5px; }
+  #hud .sub { color:var(--dim); font-size:12px; margin-bottom:10px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  button {
+    background:#2f452c; color:var(--fg); border:1px solid var(--line); border-radius:8px;
+    padding:6px 10px; font-size:12px; cursor:pointer; font-family:inherit;
+  }
+  button:hover { background:#3d5a38; }
+  button.active { background:#7a5c12; border-color:var(--accent); color:#fff; }
+  .stat { display:flex; justify-content:space-between; color:var(--dim); font-size:12px; padding:1px 0; }
+  .stat b { color:var(--fg); font-weight:600; }
+  .crit { color:var(--red); font-weight:700; }
+  .ok { color:var(--green); }
+  hr { border:none; border-top:1px solid var(--line); margin:10px 0; }
+  label.ck { display:flex; gap:6px; align-items:center; color:var(--dim); font-size:12px; cursor:pointer; }
+  .legend { display:flex; gap:10px; font-size:11px; color:var(--dim); flex-wrap:wrap; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle; }
+  #tip {
+    position:fixed; right:14px; bottom:12px; z-index:10; color:var(--dim); font-size:12px;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 12px; max-width:46vw;
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<div id="hud">
+  <h1>🐝 蜂场蜂路模拟</h1>
+  <div class="sub">滚轮缩放 · 空白处拖动平移 · 拖动蜂箱重排</div>
+  <div class="row">
+    <button data-preset="normal">常规间距</button>
+    <button data-preset="tight">最小箱间距</button>
+    <button id="btnCrit" class="active">临界压窄（推进半步）</button>
+  </div>
+  <div class="row">
+    <button id="btnResetView">复位视角</button>
+    <button id="btnPause">暂停</button>
+  </div>
+  <hr>
+  <div class="stat"><span>蜂群总数</span><b id="stBees">–</b></div>
+  <div class="stat"><span>最窄蜂路</span><b id="stMin">–</b></div>
+  <div class="stat"><span>折返 / 受阻蜂</span><b id="stBlocked">–</b></div>
+  <div class="stat"><span>通行状态</span><b id="stFlow">–</b></div>
+  <hr>
+  <div class="legend">
+    <span><i class="dot" style="background:#8ce08c"></i>顺畅 ≥60px</span>
+    <span><i class="dot" style="background:#ffd34d"></i>压缩 40–60px</span>
+    <span><i class="dot" style="background:#ff6b5e"></i>临界 &lt;40px 折返</span>
+  </div>
+  <hr>
+  <label class="ck"><input type="checkbox" id="ckLanes" checked> 显示右侧通行流线</label>
+  <label class="ck"><input type="checkbox" id="ckLabels" checked> 显示蜂路宽度标注</label>
+</div>
+
+<div id="tip">
+  纵向拖动任意蜂箱 → 整排平移，相邻蜂路宽度实时重算；横向拖动 → 调整同排箱间距。
+  蜂路被压到临界宽度后，蜂群无法穿行，在两排蜂箱之间来回折返；把该排拉回即恢复顺畅。
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi-viewport@4.34.4/dist/viewport.min.js"></script>
+<script>
+'use strict';
+/* ============================================================
+ * 常量与布局参数
+ * ============================================================ */
+const FIELD = { w: 1760, h: 1180 };          // 世界尺寸
+const HIVE_W = 96, HIVE_H = 60;             // 蜂箱尺寸
+const ROWS = 5, COLS = 6;                   // 5 排 × 6 箱
+const GAP_MIN = 60;                         // 最小箱间距（蜂路安全宽度下限附近）
+const GAP_NORMAL = 130;                     // 常规蜂路宽度
+const HALF_STEP = 24;                       // “再推进半步”：60-24=36 < 临界40，蜂群无法穿行
+const W_CRIT = 40;                          // 临界宽度：低于此值蜂无法穿行
+const W_TIGHT = 60;                         // 压缩/顺畅分界
+const BEE_R = 5;
+const BEE_SPEED = 132;                      // px/s
+const MAX_FORCE = 520;                      // 转向加速度上限
+const BEES_PER_CORRIDOR = 40;
+const SIDE_MARGIN = 250;                    // 蜂箱排左右外侧留给蜜源的空间
+
+const ROW_LEFT = 170, ROW_RIGHT = FIELD.w - 170;
+const ROW_SPAN = ROW_RIGHT - ROW_LEFT;
+const TOP_Y = 130;
+
+/* 三种预置布局的排间距（箱间通道宽度） */
+const PRESETS = {
+  normal: { gap: GAP_NORMAL, label: '常规间距' },
+  tight:  { gap: GAP_MIN,    label: '最小箱间距' },
+  critical: { gap: GAP_MIN, label: '临界（第2排推进半步）' },
+};
+
+/* ============================================================
+ * PIXI 应用与视口
+ * ============================================================ */
+const app = new PIXI.Application({
+  resizeTo: window,
+  antialias: true,
+  background: 0x294028,
+  resolution: Math.min(window.devicePixelRatio || 1, 2),
+  autoDensity: true,
+});
+document.getElementById('stage').appendChild(app.view);
+
+const viewport = new PIXI.Viewport({
+  screenWidth: window.innerWidth,
+  screenHeight: window.innerHeight,
+  worldWidth: FIELD.w,
+  worldHeight: FIELD.h,
+  events: app.renderer.events,
+});
+viewport
+  // v4 的 drag 插件没有 ignore 选项：蜂箱 pointerdown 时通过 pause('drag') 互斥
+  .drag({ pressDrag: true, wheel: false })
+  .wheel({ center: 0, smooth: 6, percent: 0.12 })
+  .pinch({ center: 0 })
+  .decelerate({ friction: 0.92 })
+  .clamp({ direction: 'all' })
+  .clampZoom({ minScale: 0.35, maxScale: 6 });
+app.stage.addChild(viewport);
+
+window.addEventListener('resize', () => {
+  viewport.resize(window.innerWidth, window.innerHeight);
+});
+
+/* ============================================================
+ * 纹理：蜂箱 / 蜜蜂 / 花
+ * ============================================================ */
+function makeHiveTexture() {
+  const g = new PIXI.Graphics();
+  // 投影
+  g.beginFill(0x000000, 0.28); g.drawRoundedRect(5, 8, HIVE_W, HIVE_H, 8); g.endFill();
+  // 箱体
+  g.beginFill(0xd99435); g.drawRoundedRect(0, 0, HIVE_W, HIVE_H, 8); g.endFill();
+  g.lineStyle(2, 0x8f5a17, 1); g.drawRoundedRect(1, 1, HIVE_W - 2, HIVE_H - 2, 8);
+  // 叠层板条
+  g.lineStyle(2, 0x9c641c, 0.9);
+  for (let i = 1; i < 4; i++) {
+    const y = (HIVE_H / 4) * i;
+    g.moveTo(6, y); g.lineTo(HIVE_W - 6, y);
+  }
+  // 顶盖
+  g.beginFill(0xf2b44d); g.drawRoundedRect(0, 0, HIVE_W, 12, 7); g.endFill();
+  // 巢门（朝下，朝向下方蜂路）
+  g.beginFill(0x2a1a08); g.drawRoundedRect(HIVE_W / 2 - 11, HIVE_H - 8, 22, 7, 3); g.endFill();
+  // 小标号牌
+  g.beginFill(0xfff3d0); g.drawRoundedRect(6, 18, 20, 14, 3); g.endFill();
+  return app.renderer.generateTexture(g);
+}
+const HIVE_TEX = makeHiveTexture();
+
+function makeBeeTexture() {
+  const g = new PIXI.Graphics();
+  // 翅膀（上方）
+  g.beginFill(0xffffff, 0.55);
+  g.drawEllipse(-1, -5, 5.5, 3.2);
+  g.drawEllipse(-1, 5, 5.5, 3.2);
+  g.endFill();
+  // 身体：朝向 +x
+  g.beginFill(0xf4c22b); g.drawEllipse(0, 0, 7, 4.6); g.endFill();
+  g.lineStyle(1.6, 0x241a05);
+  g.moveTo(-1.5, -4.2); g.lineTo(-1.5, 4.2);
+  g.moveTo(2.2, -4); g.lineTo(2.2, 4);
+  // 头
+  g.beginFill(0x241a05); g.drawCircle(5.6, 0, 2.7); g.endFill();
+  return app.renderer.generateTexture(g, { resolution: 2 });
+}
+const BEE_TEX = makeBeeTexture();
+
+function makeFlowerTexture() {
+  const g = new PIXI.Graphics();
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI * 2 / 6) * i;
+    g.beginFill(0xff8fb1);
+    g.drawCircle(Math.cos(a) * 7, Math.sin(a) * 7, 5);
+    g.endFill();
+  }
+  g.beginFill(0xffd34d); g.drawCircle(0, 0, 4.5); g.endFill();
+  g.beginFill(0x3e7d33); g.drawRect(-1.4, 6, 2.8, 10); g.endFill();
+  return app.renderer.generateTexture(g, { resolution: 2 });
+}
+const FLOWER_TEX = makeFlowerTexture();
+
+/* ============================================================
+ * 场景图层
+ * ============================================================ */
+const groundLayer = new PIXI.Container();
+const corridorLayer = new PIXI.Container();   // 蜂路通道填色 / 流线
+const labelLayer = new PIXI.Container();      // 宽度标注
+const flowerLayer = new PIXI.Container();
+const hiveLayer = new PIXI.Container();
+const beeLayer = new PIXI.Container();
+viewport.addChild(groundLayer, corridorLayer, labelLayer, flowerLayer, hiveLayer, beeLayer);
+
+/* 草地底纹 + 边界 */
+(function drawGround() {
+  const g = new PIXI.Graphics();
+  g.lineStyle(4, 0x1c2e1b, 1).drawRect(2, 2, FIELD.w - 4, FIELD.h - 4);
+  // 草地块
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < 260; i++) {
+    const x = rnd() * FIELD.w, y = rnd() * FIELD.h;
+    g.lineStyle(1.5, 0x3a5c34, 0.5).moveTo(x, y).lineTo(x, y - 5 - rnd() * 4);
+  }
+  groundLayer.addChild(g);
+}());
+
+/* ============================================================
+ * 蜂箱数据（可拖动）
+ * hives[r][c] -> { sprite, r, c, x, y }
+ * ============================================================ */
+const hives = [];
+const hiveXs = new Array(COLS).fill(0);       // 同排共享 x（横向拖动会整体重排间距）
+const rowYs = new Array(ROWS).fill(0);
+
+function hiveGapX() {
+  return (ROW_SPAN - COLS * HIVE_W) / (COLS - 1);
+}
+function layoutHiveXs() {
+  const gx = hiveGapX();
+  for (let c = 0; c < COLS; c++) hiveXs[c] = ROW_LEFT + c * (HIVE_W + gx);
+}
+function layoutRows(gap, criticalPush) {
+  // 常规/最小布局：所有排等间距。
+  // 临界布局：整体按最小箱间距排开，再只把第 3 排（索引 2）向上推进半步，
+  // 使其与第 2 排之间的蜂路被压到临界宽度（gap - HALF_STEP < W_CRIT）；
+  // 其它蜂路仍保持最小箱间距。把该排拉回即恢复顺畅。
+  for (let r = 0; r < ROWS; r++) {
+    let y = TOP_Y + r * (HIVE_H + gap);
+    if (criticalPush && r === 2) y -= HALF_STEP;
+    rowYs[r] = y;
+  }
+}
+
+for (let r = 0; r < ROWS; r++) {
+  hives[r] = [];
+  for (let c = 0; c < COLS; c++) {
+    const sprite = new PIXI.Sprite(HIVE_TEX);
+    sprite.anchor.set(0.5);
+    sprite.eventMode = 'static';
+    sprite.cursor = 'grab';
+    const data = { r, c, sprite };
+    sprite.hiveData = data;
+    sprite
+      .on('pointerdown', startDrag)
+      .on('pointerover', () => { sprite.alpha = 0.88; })
+      .on('pointerout', () => { sprite.alpha = 1; });
+    hiveLayer.addChild(sprite);
+    hives[r][c] = data;
+  }
+}
+
+function syncHiveSprites() {
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++) {
+      const h = hives[r][c];
+      h.x = hiveXs[c]; h.y = rowYs[r];
+      h.sprite.position.set(h.x, h.y);
+      h.sprite.label = `R${r + 1}-${c + 1}`;
+    }
+}
+
+/* ---------------- 拖动蜂箱 ---------------- */
+let drag = null;
+function startDrag(e) {
+  const data = e.target.hiveData;
+  if (!data) return;
+  e.stopPropagation();
+  // 暂停视口拖拽，避免与蜂箱拖动冲突
+  viewport.plugins.pause('drag');
+  drag = {
+    data,
+    start: viewport.toWorld(e.data.global.x, e.data.global.y),
+    startRowY: rowYs[data.r],
+    startXs: hiveXs.slice(),
+  };
+  data.sprite.cursor = 'grabbing';
+  window.addEventListener('pointermove', onDragMove);
+  window.addEventListener('pointerup', onDragEnd, { once: true });
+  window.addEventListener('pointercancel', onDragEnd, { once: true });
+}
+function onDragMove(e) {
+  if (!drag) return;
+  const p = viewport.toWorld(e.clientX, e.clientY);
+  const dx = p.x - drag.start.x;
+  const dy = p.y - drag.start.y;
+
+  if (Math.abs(dy) >= Math.abs(dx)) {
+    // 纵向：整排平移，夹在相邻排之间，保证蜂路宽度 ≥ 6px
+    const r = drag.data.r;
+    let y = drag.startRowY + dy;
+    const minAbove = r === 0 ? TOP_Y : rowYs[r - 1] + HIVE_H / 2 + 6 + HIVE_H / 2;
+    const maxBelow = r === ROWS - 1 ? FIELD.h - 60 : rowYs[r + 1] - HIVE_H / 2 - 6 - HIVE_H / 2;
+    y = Math.max(minAbove, Math.min(maxBelow, y));
+    rowYs[r] = y;
+  } else {
+    // 横向：调整该箱在同排中的位置（保持顺序与 8px 最小净距）
+    const c = drag.data.c;
+    let nx = drag.startXs[c] + dx;
+    const minX = c === 0 ? ROW_LEFT : hiveXs[c - 1] + HIVE_W + 8;
+    const maxX = c === COLS - 1 ? ROW_RIGHT : hiveXs[c + 1] - HIVE_W - 8;
+    hiveXs[c] = Math.max(minX, Math.min(maxX, nx));
+  }
+  syncHiveSprites();
+}
+function onDragEnd() {
+  if (drag) drag.data.sprite.cursor = 'grab';
+  drag = null;
+  window.removeEventListener('pointermove', onDragMove);
+  viewport.plugins.resume('drag');
+}
+
+/* ============================================================
+ * 蜂路通道（相邻两排之间）
+ * corridor i 位于排 i 与排 i+1 之间，共 ROWS-1 条
+ * ============================================================ */
+const corridors = [];
+for (let i = 0; i < ROWS - 1; i++) {
+  const band = new PIXI.Graphics();
+  const flow = new PIXI.Graphics();
+  const label = new PIXI.Container();
+  const labelBg = new PIXI.Graphics();
+  const labelText = new PIXI.Text('', {
+    fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif', fontSize: 12, fill: 0xffffff,
+    stroke: 0x10200f, strokeThickness: 3,
+  });
+  label.addChild(labelBg, labelText);
+  corridorLayer.addChild(band, flow);
+  labelLayer.addChild(label);
+  corridors.push({ index: i, band, flow, label, labelBg, labelText, width: 0, midY: 0, top: 0, bottom: 0, blocked: false });
+}
+
+function corridorGeometry() {
+  for (const cd of corridors) {
+    const topRow = rowYs[cd.index], botRow = rowYs[cd.index + 1];
+    cd.top = topRow + HIVE_H / 2;
+    cd.bottom = botRow - HIVE_H / 2;
+    cd.midY = (cd.top + cd.bottom) / 2;
+    cd.width = cd.bottom - cd.top;
+    cd.blocked = cd.width < W_CRIT;
+  }
+}
+
+/* ============================================================
+ * 蜜源（花田）：左右各一片，对齐每条蜂路
+ * ============================================================ */
+const flowers = [];
+for (let i = 0; i < ROWS - 1; i++) {
+  for (const side of [-1, 1]) {
+    const patch = [];
+    const baseX = side < 0 ? 95 : FIELD.w - 95;
+    for (let k = 0; k < 9; k++) {
+      const s = new PIXI.Sprite(FLOWER_TEX);
+      s.anchor.set(0.5);
+      s.scale.set(0.9 + (k % 3) * 0.18);
+      const ox = ((k % 3) - 1) * 26;
+      const oy = ((k / 3 | 0) - 1) * 24;
+      s.position.set(baseX + ox, 0);
+      flowerLayer.addChild(s);
+      patch.push({ sprite: s, ox, oy, side });
+    }
+    flowers.push({ corridor: i, side, patch, baseX });
+  }
+}
+function flowerTarget(corridor, side) {
+  const f = flowers.find((q) => q.corridor === corridor && q.side === side);
+  return { x: f.baseX, y: corridors[corridor].midY };
+}
+function syncFlowers() {
+  for (const f of flowers) {
+    const mid = corridors[f.corridor].midY;
+    for (const p of f.patch) p.sprite.position.y = mid + p.oy;
+  }
+}
+
+/* ============================================================
+ * 蜜蜂
+ * 状态机：idle → out（蜂路内朝外）→ sideOut → flower → sideBack
+ *         → back（蜂路内朝巢）→ idle；受阻时 backtrack 折返
+ * ============================================================ */
+const ST = { IDLE:0, OUT:1, SIDE_OUT:2, FLOWER:3, SIDE_BACK:4, BACK:5, BACKTRACK:6, WAIT:7 };
+const bees = [];
+let beeId = 0;
+
+function spawnBee(corridor) {
+  const cd = corridors[corridor];
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const sprite = new PIXI.Sprite(BEE_TEX);
+  sprite.anchor.set(0.5);
+  beeLayer.addChild(sprite);
+  const b = {
+    id: beeId++,
+    corridor,
+    side,
+    hiveR: Math.random() < 0.5 ? corridor : corridor + 1, // 归属上排或下排
+    hiveC: (Math.random() * COLS) | 0,
+    state: ST.IDLE,
+    pos: new PIXI.Point(0, cd.midY),
+    vel: new PIXI.Point(0, 0),
+    sprite,
+    phase: Math.random() * Math.PI * 2,
+    idleT: 0,
+    flowerT: 0,
+    tx: 0, ty: 0,           // 当前转向目标
+    btFrom: 0,              // 折返起点 x
+  };
+  placeAtEntrance(b);
+  bees.push(b);
+  return b;
+}
+function entranceY(b) {
+  const h = hives[b.hiveR][b.hiveC];
+  // 蜂路在 hiveR 与 hiveR+1 之间：上排箱的巢门在底缘，下排箱的巢门在顶缘
+  return b.hiveR === b.corridor ? h.y + HIVE_H / 2 + 3 : h.y - HIVE_H / 2 - 3;
+}
+function placeAtEntrance(b) {
+  const h = hives[b.hiveR][b.hiveC];
+  b.pos.set(h.x, entranceY(b));
+  b.vel.set(0, 0);
+  b.idleT = 0.3 + Math.random() * 0.9;
+  b.state = ST.IDLE;
+  b.sprite.position.copyFrom(b.pos);
+}
+
+for (let i = 0; i < ROWS - 1; i++) {
+  for (let k = 0; k < BEES_PER_CORRIDOR; k++) {
+    const b = spawnBee(i);
+    // 初始散布到蜂路各处，避免开场叠在一起
+    b.state = Math.random() < 0.5 ? ST.OUT : ST.BACK;
+    b.pos.x = ROW_LEFT - 30 + Math.random() * (ROW_SPAN + 60);
+    b.pos.y = corridors[i].midY + (Math.random() - 0.5) * Math.max(10, corridors[i].width - 24);
+    b.side = Math.random() < 0.5 ? -1 : 1;
+  }
+}
+
+/* ---------------- 空间哈希（邻居避让） ---------------- */
+const CELL = 36;
+const grid = new Map();
+function gridKey(x, y) { return ((x / CELL) | 0) + ',' + ((y / CELL) | 0); }
+function rebuildGrid() {
+  grid.clear();
+  for (const b of bees) {
+    const k = gridKey(b.pos.x, b.pos.y);
+    let arr = grid.get(k);
+    if (!arr) { arr = []; grid.set(k, arr); }
+    arr.push(b);
+  }
+}
+function forEachNeighbor(b, fn) {
+  const cx = (b.pos.x / CELL) | 0, cy = (b.pos.y / CELL) | 0;
+  for (let ix = cx - 1; ix <= cx + 1; ix++)
+    for (let iy = cy - 1; iy <= cy + 1; iy++) {
+      const arr = grid.get(ix + ',' + iy);
+      if (!arr) continue;
+      for (const o of arr) if (o !== b) fn(o);
+    }
+}
+
+/* ============================================================
+ * 蜂群行为更新
+ * ============================================================ */
+const tmp = new PIXI.Point();
+let paused = false;
+
+function steerTo(b, x, y, dt) {
+  // 期望速度
+  let dx = x - b.pos.x, dy = y - b.pos.y;
+  const d = Math.hypot(dx, dy) || 1;
+  dx /= d; dy /= d;
+  let dvx = dx * BEE_SPEED - b.vel.x;
+  let dvy = dy * BEE_SPEED - b.vel.y;
+  const fm = Math.hypot(dvx, dvy);
+  if (fm > MAX_FORCE * dt) { dvx = dvx / fm * MAX_FORCE * dt; dvy = dvy / fm * MAX_FORCE * dt; }
+  tmp.set(dvx, dvy);
+  return tmp;
+}
+
+function inCorridorSpan(b) {
+  return b.pos.x >= ROW_LEFT - 2 && b.pos.x <= ROW_RIGHT + 2;
+}
+
+function updateBee(b, dt, time) {
+  b.phase += dt * 9;
+  const cd = corridors[b.corridor];
+
+  /* ---- 状态：巢内停留 ---- */
+  if (b.state === ST.IDLE) {
+    b.idleT -= dt;
+    b.vel.set(0, 0);
+    if (b.idleT <= 0) {
+      b.state = ST.OUT;
+      b.side = Math.random() < 0.5 ? -1 : 1;
+      const t = flowerTarget(b.corridor, b.side);
+      b.tx = t.x; b.ty = t.y;
+    }
+    return;
+  }
+
+  const inSpan = inCorridorSpan(b);
+
+  /* ---- 蜂路内：车道 + 箱壁偏移 + 临界折返 ---- */
+  if (b.state === ST.OUT || b.state === ST.BACK || b.state === ST.BACKTRACK || b.state === ST.WAIT) {
+    const dirX = b.vel.x >= 0 ? 1 : -1;
+
+    // 基础车道目标：朝各自右侧让开
+    // 向右飞(+x) 的右侧是 +y（蜂路下侧）；向左飞(-x) 的右侧是 -y（蜂路上侧）
+    const w = cd.width;
+    const tightness = w < W_TIGHT ? (W_TIGHT - w) / (W_TIGHT - 14) : 0; // 0~1，越窄越密
+    const laneOffset = dirX * 1 * (w * 0.26 + tightness * w * 0.1);
+    let targetY = cd.midY + laneOffset;
+    // 个体抖动：通道越窄抖动越小 → 挤成更密的流线
+    const jitterAmp = 7 * (1 - tightness * 0.75);
+    targetY += Math.sin(b.phase * 1.3 + b.id) * jitterAmp;
+
+    // 靠近箱壁自动偏移（软墙推回）
+    const margin = BEE_R + 5;
+    if (b.pos.y > cd.bottom - margin) targetY = Math.min(targetY, cd.bottom - margin - 2);
+    if (b.pos.y < cd.top + margin) targetY = Math.max(targetY, cd.top + margin + 2);
+
+    // 选择沿蜂路方向的目标点
+    let targetX;
+    if (b.state === ST.BACKTRACK) {
+      targetX = b.tx;
+    } else if (b.state === ST.WAIT) {
+      targetX = b.pos.x; // 原地等待，仅做车道修正
+    } else {
+      targetX = b.state === ST.OUT
+        ? (b.side < 0 ? ROW_LEFT - 150 : ROW_RIGHT + 150)
+        : hives[b.hiveR][b.hiveC].x;
+    }
+
+    // 归巢蜂接近自家巢门后，目标从车道过渡到巢门位置
+    if (b.state === ST.BACK && Math.abs(b.pos.x - hives[b.hiveR][b.hiveC].x) < 70) {
+      targetY = entranceY(b);
+    }
+
+    const f = steerTo(b, targetX, targetY, dt);
+    let ax = f.x, ay = f.y;
+
+    /* 邻居：迎面蜂右侧让行 + 近距离分离 */
+    forEachNeighbor(b, (o) => {
+      const ox = o.pos.x - b.pos.x, oy = o.pos.y - b.pos.y;
+      const d2 = ox * ox + oy * oy;
+      if (d2 > 26 * 26) return;
+      const d = Math.sqrt(d2) || 1;
+      // 分离力
+      if (d < 15) {
+        const push = (15 - d) / 15 * 260 * dt;
+        ax -= ox / d * push; ay -= oy / d * push;
+      }
+      // 迎面相遇：双方都朝自己右侧偏（已由车道偏移主导，这里再加一把横向让行）
+      if (d < 24 && o.vel.x * b.vel.x < -0.2 * BEE_SPEED * BEE_SPEED) {
+        ay += dirX * (24 - d) / 24 * 300 * dt; // dirX>0 向右飞→往下让；dirX<0 向上让
+      }
+    });
+
+    // 墙的软推力；归巢蜂只在靠近自家巢门所属的那面墙时放行
+    const homeHive = hives[b.hiveR][b.hiveC];
+    const nearGateX = b.state === ST.BACK && Math.abs(b.pos.x - homeHive.x) < 40;
+    const gateOnTop = b.hiveR === b.corridor;
+    const ny = b.pos.y + b.vel.y * dt + ay * dt;
+    if (ny > cd.bottom - BEE_R && !(nearGateX && !gateOnTop)) { ay -= (ny - (cd.bottom - BEE_R)) * 18; }
+    if (ny < cd.top + BEE_R && !(nearGateX && gateOnTop)) { ay += ((cd.top + BEE_R) - ny) * 18; }
+
+    b.vel.x += ax; b.vel.y += ay;
+    const sp = Math.hypot(b.vel.x, b.vel.y);
+    if (sp > BEE_SPEED) { b.vel.x = b.vel.x / sp * BEE_SPEED; b.vel.y = b.vel.y / sp * BEE_SPEED; }
+    if (b.state === ST.WAIT) b.vel.x *= 0.8; // 等待时纵向趋零
+
+    /* ---- 临界宽度：进入即折返 ---- */
+    if (cd.blocked && b.state !== ST.BACKTRACK && b.state !== ST.WAIT) {
+      if (inSpan) {
+        // 在被压窄的蜂路内部：掉头，目标为身后的蜂路端部
+        b.state = ST.BACKTRACK;
+        const out = b.vel.x >= 0 ? -1 : 1;
+        b.btFrom = b.pos.x;
+        b.tx = b.pos.x + out * (140 + Math.random() * 120);
+        b.tx = Math.max(ROW_LEFT - 60, Math.min(ROW_RIGHT + 60, b.tx));
+      } else if (b.state === ST.OUT) {
+        // 正要进入受阻蜂路 → 在端部等待，通道恢复后自动继续
+        b.state = ST.WAIT;
+      }
+    }
+    // 等待中的蜂：通道恢复即进入
+    if (b.state === ST.WAIT && !cd.blocked) b.state = ST.OUT;
+
+    /* ---- 折返蜂在两端来回 ---- */
+    if (b.state === ST.BACKTRACK) {
+      if (Math.abs(b.pos.x - b.tx) < 14) {
+        const out = b.tx >= b.btFrom ? -1 : 1;
+        b.btFrom = b.pos.x;
+        b.tx = b.pos.x + out * (140 + Math.random() * 120);
+        b.tx = Math.max(ROW_LEFT - 40, Math.min(ROW_RIGHT + 40, b.tx));
+      }
+      // 通道恢复顺畅 → 重新朝外飞
+      if (!cd.blocked) b.state = ST.OUT;
+    }
+
+    /* ---- 蜂路端部状态切换 ---- */
+    if (!cd.blocked || b.state === ST.BACKTRACK) {
+      if (b.state === ST.OUT) {
+        const endX = b.side < 0 ? ROW_LEFT : ROW_RIGHT;
+        if ((b.side < 0 && b.pos.x <= endX - 6) || (b.side > 0 && b.pos.x >= endX + 6)) {
+          b.state = ST.SIDE_OUT;
+          const t = flowerTarget(b.corridor, b.side);
+          b.tx = t.x; b.ty = t.y;
+        }
+      } else if (b.state === ST.BACK) {
+        const h = hives[b.hiveR][b.hiveC];
+        if (Math.abs(b.pos.x - h.x) < 26 && Math.abs(b.pos.y - entranceY(b)) < 22) {
+          placeAtEntrance(b);
+          return;
+        }
+      }
+    }
+  }
+
+  /* ---- 蜂路外侧：直飞蜜源 / 飞回蜂路 ---- */
+  if (b.state === ST.SIDE_OUT || b.state === ST.SIDE_BACK) {
+    const f = steerTo(b, b.tx, b.ty, dt);
+    b.vel.x += f.x; b.vel.y += f.y;
+    const sp = Math.hypot(b.vel.x, b.vel.y);
+    if (sp > BEE_SPEED) { b.vel.x = b.vel.x / sp * BEE_SPEED; b.vel.y = b.vel.y / sp * BEE_SPEED; }
+
+    if (b.state === ST.SIDE_OUT && Math.hypot(b.pos.x - b.tx, b.pos.y - b.ty) < 16) {
+      b.state = ST.FLOWER; b.flowerT = 0.8 + Math.random() * 1.4;
+      b.vel.set(0, 0);
+    }
+    if (b.state === ST.SIDE_BACK) {
+      // 飞回蜂路入口（入口即蜂路边界），一进入蜂路水平跨度就切换
+      if (inCorridorSpan(b)) {
+        // 回到蜂路：若受阻则在外侧等待，通道恢复后自动继续
+        if (cd.blocked) { b.state = ST.WAIT; }
+        else b.state = ST.BACK;
+      }
+    }
+  }
+
+  /* ---- 蜜源停留 ---- */
+  if (b.state === ST.FLOWER) {
+    b.flowerT -= dt;
+    b.vel.set(Math.sin(b.phase * 3) * 12, Math.cos(b.phase * 2.4) * 12);
+    if (b.flowerT <= 0) {
+      b.state = ST.SIDE_BACK;
+      // 目标指向蜂路入口内侧，蜂飞入跨度即切到 BACK
+      b.tx = b.side < 0 ? ROW_LEFT + 10 : ROW_RIGHT - 10;
+      b.ty = cd.midY;
+    }
+  }
+
+  /* ---- 积分 + 朝向跟随速度 ---- */
+  b.pos.x += b.vel.x * dt;
+  b.pos.y += b.vel.y * dt;
+  b.pos.x = Math.max(14, Math.min(FIELD.w - 14, b.pos.x));
+
+  /* 硬钳制：蜂路内的蜂绝不允许越过箱壁（兜底，杜绝任何穿模）；
+     归巢蜂贴近自家巢门、且正朝所属那面墙靠近时除外，允许进入巢门 */
+  const confined = b.state === ST.OUT || b.state === ST.BACK || b.state === ST.BACKTRACK || b.state === ST.WAIT;
+  if (confined && inCorridorSpan(b)) {
+    const cdNow = corridors[b.corridor];
+    const homeHive = hives[b.hiveR][b.hiveC];
+    const nearGateX = b.state === ST.BACK && Math.abs(b.pos.x - homeHive.x) < 40;
+    // 巢门所在墙：归属上排(hiveR===corridor)→顶墙；归属下排→底墙
+    const gateOnTop = b.hiveR === b.corridor;
+    const lo = cdNow.top + BEE_R, hi = cdNow.bottom - BEE_R;
+    const enterTopGate = nearGateX && gateOnTop;
+    const enterBottomGate = nearGateX && !gateOnTop;
+    if (b.pos.y < lo && !enterTopGate) { b.pos.y = lo; if (b.vel.y < 0) b.vel.y = 0; }
+    else if (b.pos.y > hi && !enterBottomGate) { b.pos.y = hi; if (b.vel.y > 0) b.vel.y = 0; }
+  }
+
+  const spd = Math.hypot(b.vel.x, b.vel.y);
+  if (spd > 8) b.sprite.rotation = Math.atan2(b.vel.y, b.vel.x);
+  b.sprite.position.copyFrom(b.pos);
+}
+
+/* ============================================================
+ * 通道渲染：填色（顺畅/压缩/临界）+ 右侧流线 + 宽度标注
+ * ============================================================ */
+function drawCorridors(time) {
+  let minW = Infinity, blockedCount = 0;
+  for (const cd of corridors) {
+    const w = cd.width;
+    minW = Math.min(minW, w);
+    if (cd.blocked) blockedCount++;
+
+    let fill, edge;
+    if (w < W_CRIT) { fill = 0xff6b5e; edge = 0xff3b2e; }
+    else if (w < W_TIGHT) { fill = 0xffd34d; edge = 0xd9a400; }
+    else { fill = 0x8ce08c; edge = 0x4fae4f; }
+
+    /* 通道填色 */
+    cd.band.clear();
+    cd.band.beginFill(fill, cd.blocked ? 0.22 + Math.sin(time * 6) * 0.07 : 0.10);
+    cd.band.lineStyle(2, edge, 0.5);
+    cd.band.drawRect(ROW_LEFT, cd.top, ROW_SPAN, w);
+    cd.band.endFill();
+
+    /* 两侧箱壁线 */
+    cd.band.lineStyle(2, 0x000000, 0.25);
+    cd.band.moveTo(ROW_LEFT, cd.top).lineTo(ROW_RIGHT, cd.top);
+    cd.band.moveTo(ROW_LEFT, cd.bottom).lineTo(ROW_RIGHT, cd.bottom);
+
+    /* 右侧通行流线（两股，密度随宽度变化） */
+    cd.flow.clear();
+    if (showLanes) {
+      const tightness = w < W_TIGHT ? (W_TIGHT - w) / (W_TIGHT - 14) : 0;
+      const dashLen = 10 + tightness * 18;   // 越窄流线越密（短划线更密）
+      const gap = 26 - tightness * 14;
+      const laneY1 = cd.midY + w * 0.26;      // 向右车流贴下侧
+      const laneY2 = cd.midY - w * 0.26;      // 向左车流贴上侧
+      cd.flow.lineStyle(2, 0xffffff, 0.35);
+      const scroll = (time * 40) % (dashLen + gap);
+      for (let x = ROW_LEFT - scroll; x < ROW_RIGHT; x += dashLen + gap) {
+        cd.flow.moveTo(x, laneY1).lineTo(Math.min(x + dashLen, ROW_RIGHT), laneY1);
+      }
+      cd.flow.lineStyle(2, 0xffe9a8, 0.35);
+      const scroll2 = (time * 40) % (dashLen + gap);
+      for (let x = ROW_RIGHT + scroll2; x > ROW_LEFT; x -= dashLen + gap) {
+        cd.flow.moveTo(x, laneY2).lineTo(Math.max(x - dashLen, ROW_LEFT), laneY2);
+      }
+    }
+
+    /* 宽度标注 */
+    cd.label.visible = showLabels;
+    if (showLabels) {
+      cd.labelText.text = `蜂路 ${cd.index + 1}：${Math.round(w)}px${cd.blocked ? ' ⚠临界' : w < W_TIGHT ? ' 压缩' : ''}`;
+      cd.labelText.style.fill = cd.blocked ? 0xff8a7e : w < W_TIGHT ? 0xffd34d : 0xbff0bf;
+      const pad = 6;
+      cd.labelBg.clear();
+      cd.labelBg.beginFill(0x10200f, 0.72);
+      cd.labelBg.drawRoundedRect(-pad, -3, cd.labelText.width + pad * 2, cd.labelText.height + 6, 5);
+      cd.labelBg.endFill();
+      cd.label.position.set(ROW_LEFT + 10, cd.midY - cd.labelText.height / 2);
+    }
+  }
+  return { minW, blockedCount };
+}
+
+/* ============================================================
+ * HUD
+ * ============================================================ */
+const stBees = document.getElementById('stBees');
+const stMin = document.getElementById('stMin');
+const stBlocked = document.getElementById('stBlocked');
+const stFlow = document.getElementById('stFlow');
+let showLanes = true, showLabels = true;
+document.getElementById('ckLanes').addEventListener('change', (e) => showLanes = e.target.checked);
+document.getElementById('ckLabels').addEventListener('change', (e) => showLabels = e.target.checked);
+document.getElementById('btnPause').addEventListener('click', (e) => {
+  paused = !paused; e.target.textContent = paused ? '继续' : '暂停';
+});
+document.getElementById('btnResetView').addEventListener('click', () => {
+  viewport.setZoom(0.72, true);
+  viewport.moveCenter(FIELD.w / 2, FIELD.h / 2);
+});
+
+function applyPreset(name) {
+  const p = PRESETS[name];
+  layoutHiveXs();
+  layoutRows(p.gap, name === 'critical');
+  syncHiveSprites();
+  document.querySelectorAll('[data-preset]').forEach((btn) =>
+    btn.classList.toggle('active', btn.dataset.preset === name));
+}
+document.querySelectorAll('[data-preset]').forEach((btn) =>
+  btn.addEventListener('click', () => applyPreset(btn.dataset.preset)));
+
+/* ============================================================
+ * 主循环
+ * ============================================================ */
+layoutHiveXs();
+applyPreset('critical');           // 开场即临界布局：第 2 排推进半步
+corridorGeometry();
+syncFlowers();
+viewport.setZoom(0.72);
+viewport.moveCenter(FIELD.w / 2, FIELD.h / 2);
+
+/* 自动化测试钩子 */
+window.__test = {
+  get bees() { return bees; }, get corridors() { return corridors; },
+  get rowYs() { return rowYs; }, get hiveXs() { return hiveXs; },
+  get ST() { return ST; }, get W_CRIT() { return W_CRIT; }, get W_TIGHT() { return W_TIGHT; },
+  get HIVE_H() { return HIVE_H; }, get ROWS() { return ROWS; },
+  worldToScreen: (x, y) => {
+    const s = viewport.toScreen(x, y);
+    return { x: s.x, y: s.y };
+  },
+  world: () => ({ w: FIELD.w, h: FIELD.h }),
+};
+
+let hudT = 0;
+app.ticker.add((dtRaw) => {
+  const dt = Math.min(dtRaw / 60, 0.05); // PIXI v7 ticker 默认单位为帧（60fps）
+  const time = app.ticker.lastTime / 1000;
+
+  if (!paused) {
+    corridorGeometry();
+    syncFlowers();
+    rebuildGrid();
+    for (const b of bees) updateBee(b, dt, time);
+  }
+
+  const { minW, blockedCount } = drawCorridors(time);
+
+  hudT += dt;
+  if (hudT > 0.25) {
+    hudT = 0;
+    stBees.textContent = bees.length;
+    stMin.textContent = Math.round(minW) + ' px';
+    stMin.className = minW < W_CRIT ? 'crit' : minW < W_TIGHT ? '' : 'ok';
+    const waiting = bees.filter((b) => b.state === ST.BACKTRACK || b.state === ST.WAIT).length;
+    stBlocked.textContent = waiting + ' 只';
+    stBlocked.className = waiting > 0 ? 'crit' : 'ok';
+    stFlow.textContent = blockedCount
+      ? '折返中（拉回该排恢复）'
+      : minW < W_TIGHT ? '密流缓行' : '顺畅穿行';
+    stFlow.className = blockedCount ? 'crit' : minW < W_TIGHT ? '' : 'ok';
+  }
+});
+</script>
+</body>
+</html>
